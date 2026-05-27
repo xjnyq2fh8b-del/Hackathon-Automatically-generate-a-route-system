@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  background: #f6efe4;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: #f6efe4;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(165, 216, 209, 0.28), transparent 30%),
+    linear-gradient(180deg, #f8f3ea 0%, #f6efe4 100%);
+  font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", Arial, sans-serif;
+}
+
+button,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+textarea {
+  color: inherit;
+}
+
+::selection {
+  background: #e5f3ed;
+}

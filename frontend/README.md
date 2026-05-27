@@ -1,24 +1,45 @@
-# Frontend Workspace Rules
+# 西湖即时路线 Agent 前端
 
-This folder contains the web demo for the AI local route planning Agent.
+这是杭州西湖周边“现在就出发”路线决策 Agent 的前端工程。
 
-## Structure
+## 目录约定
 
-- `index.html`: single-page desktop web demo entry.
-- `src/styles.css`: visual system and responsive layout.
-- `src/app.js`: state, mock service layer, route planning, replanning, and UI rendering.
-- `server.mjs`: tiny local static server for previewing the demo.
-- `package.json`: local scripts only; no secrets or runtime API keys.
+- `app/page.tsx`：主页面、页面状态和样例交互逻辑。
+- `app/layout.tsx`：Next.js 页面外壳和元信息。
+- `app/globals.css`：Tailwind 入口和全局样式。
+- `backup/`：保留历史静态版本，方便回退查看。
+- `打开网页.bat`：给非技术用户使用的一键本地启动入口。
 
-## Product Boundaries
+清理规则：
 
-- The current version is a mobile-first route decision product prototype for the Hangzhou West Lake immediate route planning scenario.
-- The UI must center on route generation and route adjustment, not a marketing landing page or a generic travel guide.
-- Mock data must be described as estimated labels or demo data, especially waiting risk, ambience, photo quality, and crowd level.
-- AMap and LLM integration should replace service-layer functions later, without changing the user-facing flow.
+- 临时素材、截图、旧版文件不要散放在 `frontend/` 根目录。
+- 需要保留的旧版本放入 `backup/`，按版本或日期命名。
+- 真实 API Key、LLM Key、地图 Key 不写入代码，后续只通过环境变量配置。
 
-## Cleanup Rules
+## 本地运行
 
-- Keep generated build artifacts, screenshots, and throwaway exports out of this folder unless they are explicitly needed for delivery.
-- Do not commit API keys, tokens, `.env` values, or private credentials.
-- Keep demo data small and scenario-specific; avoid growing this into a generic city database.
+最简单方式：双击 `打开网页.bat`，浏览器会打开：
+
+```text
+http://127.0.0.1:3000
+```
+
+如果电脑已经配置好 Node 和 npm，也可以在 `frontend/` 下运行：
+
+```bash
+npm run dev
+```
+
+## 当前实现范围
+
+- 未生成路线：Hero、自然语言输入、麦克风演示、示例需求、偏好标签。
+- 加载态：解析需求、检索 POI、计算路线三步。
+- 已生成路线：约束 chips、推荐路线总览、主行动按钮、交通方案、地图、时间轴。
+- 细节区：目的地卡片、为什么推荐、替换、删除、上移、下移。
+- 快速调整：餐厅排队太久、预算降到 100、不要咖啡、只剩 2 小时。
+
+## 当前样例范围
+
+- POI 数据、排队风险、评分、开放时间、价格和体验标签是样例数据。
+- 麦克风按钮演示“语音输入中 -> 自动填入需求”，不调用真实录音。
+- 地图是静态地图风格视觉层，不调用真实地图 API。
