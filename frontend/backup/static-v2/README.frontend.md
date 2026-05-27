@@ -12,7 +12,7 @@ This folder contains the web demo for the AI local route planning Agent.
 
 ## Product Boundaries
 
-- The current version is a mobile-first route decision product prototype for the Hangzhou West Lake immediate route planning scenario.
+- The first version is a desktop-first web decision workspace for the Hangzhou West Lake immediate route planning scenario.
 - The UI must center on route generation and route adjustment, not a marketing landing page or a generic travel guide.
 - Mock data must be described as estimated labels or demo data, especially waiting risk, ambience, photo quality, and crowd level.
 - AMap and LLM integration should replace service-layer functions later, without changing the user-facing flow.
