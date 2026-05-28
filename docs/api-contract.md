@@ -1,20 +1,18 @@
-# 路线 Agent 第一版 API 契约
+# 路线 Agent 第一版后端 mock API 契约
 
-本契约用于 P0 前后端联调。第一版所有接口先返回 mock 数据，不接真实 LLM、高德、数据库或推荐算法。
+本契约用于 P0 前后端 mock 联调。第一版不接真实 LLM、高德、数据库或推荐算法。
 
 ## 通用约定
 
 - 请求和返回均使用 JSON。
 - 字段名使用英文 `camelCase`。
-- 后端统一返回 `{ "routeData": ... }`。
-- P0 只定义成功态，错误态可先简单返回 `{ "error": "..." }`。
-- P0 调整接口无状态：前端传 `adjustmentId`，后端返回对应 mock 新路线。
+- 路线接口统一返回 `{ "routeData": ... }`。
+- 第一版调整接口每次返回完整新 `route` 和 `diff`，不返回 `routePatch`。
+- `routeData` 主结构对齐前端样例：`constraints + places + route + adjustmentButtons + diff`。
 
 ## GET /api/health
 
 用于确认后端服务是否正常。
-
-### Response
 
 ```json
 {
@@ -24,7 +22,7 @@
 
 ## POST /api/parse
 
-第一版假装解析用户输入，返回结构化约束。后续这里替换为 LLM 解析。
+第一版只返回 mock 约束。后续这里替换为 LLM 解析。
 
 ### Request
 
@@ -38,23 +36,21 @@
 
 ```json
 {
-  "parsed": {
-    "rawText": "我在湖滨银泰，下午2点到6点，想逛西湖、喝咖啡、吃晚饭，人均150，不想排队。",
-    "startLocation": "湖滨银泰 in77",
-    "timeRange": {
-      "start": "14:00",
-      "end": "18:00"
-    },
-    "budgetPerPerson": 150,
-    "preferences": ["西湖", "咖啡", "晚餐", "少排队"],
-    "pace": "轻松"
+  "constraints": {
+    "summary": "湖滨银泰｜14:00-18:00｜人均150｜少排队",
+    "chips": [
+      { "key": "出发地", "value": "湖滨银泰 in77" },
+      { "key": "时间", "value": "14:00-18:00" },
+      { "key": "预算", "value": "人均150" },
+      { "key": "偏好", "value": "少排队" }
+    ]
   }
 }
 ```
 
 ## POST /api/route/generate
 
-前端点击“生成路线”时调用。P0 先固定返回默认路线。
+前端点击“生成可执行路线”时调用。P0 固定返回默认路线。
 
 ### Request
 
@@ -69,13 +65,12 @@
 ```json
 {
   "routeData": {
-    "routeId": "route_default_westlake_halfday",
-    "routeSummary": {},
-    "pois": [],
-    "timeline": [],
-    "transportSegments": [],
-    "adjustmentOptions": [],
-    "diff": null
+    "constraints": {},
+    "places": [],
+    "route": {},
+    "adjustmentButtons": [],
+    "diff": null,
+    "message": ""
   }
 }
 ```
@@ -84,63 +79,85 @@
 
 ## POST /api/route/adjust
 
-前端点击调整按钮时调用。P0 先支持固定的 5 个 `adjustmentId`。
+前端触发快捷调整或地点卡片单节点调整时调用。P0 根据请求返回完整新路线和 diff。
 
-### Request
+### 快捷调整 Request
 
 ```json
 {
-  "adjustmentId": "noCoffee"
+  "adjustmentType": "restaurantBusy"
 }
 ```
 
-### adjustmentId
+### adjustmentType
 
-| adjustmentId | 用户按钮 | P0 返回变化 |
+| adjustmentType | 用户按钮 | P0 返回变化 |
 |---|---|---|
-| `queueTooLong` | 餐厅排队太久 | 新白鹿餐厅湖滨店 -> 外婆家湖滨店 |
-| `budgetTo100` | 预算降到100 | 新白鹿餐厅湖滨店 -> 知味观湖滨店 |
+| `restaurantBusy` | 餐厅排队太久 | 新白鹿餐厅湖滨店 -> 弄堂里湖滨店 |
+| `budget100` | 预算降到100 | 咖啡改轻休息点，晚餐改弄堂里 |
 | `noCoffee` | 不要咖啡 | 删除湖畔白塔咖啡 |
-| `onlyTwoHours` | 只剩2小时 | 删除咖啡并压缩路线 |
-| `morePhotoFriendly` | 想更适合拍照 | 断桥残雪 -> 北山街湖景拍照点 |
+| `twoHours` | 只剩2小时 | 只保留起点、断桥和晚餐 |
+| `photo` | 想更适合拍照 | 新增北山街湖景点 |
+
+### 地点卡片单节点调整 Request
+
+```json
+{
+  "action": "delete",
+  "nodeId": "baitacoffee",
+  "route": {}
+}
+```
+
+### action
+
+| action | 含义 | P0 规则 |
+|---|---|---|
+| `replace` | 替换当前节点 | 晚餐触发 `restaurantBusy`，咖啡触发 `budget100`，景点触发 `photo` |
+| `delete` | 删除当前节点 | 起点不能删除 |
+| `moveUp` | 节点上移 | 到边界时返回提示 |
+| `moveDown` | 节点下移 | 到边界时返回提示 |
 
 ### Response
 
 ```json
 {
   "routeData": {
-    "routeId": "route_no_coffee",
-    "routeSummary": {},
-    "pois": [],
-    "timeline": [],
-    "transportSegments": [],
-    "adjustmentOptions": [],
+    "constraints": {},
+    "places": [],
+    "route": {
+      "id": "westlake-half-day",
+      "label": "当前推荐",
+      "name": "轻松西湖半日线",
+      "explanation": "已删除咖啡节点，路线更短。",
+      "durationMinutes": 125,
+      "budgetPerPerson": 78,
+      "walkingKm": 2.0,
+      "waitRisk": "中",
+      "placeIds": ["in77", "brokenBridge", "xinbailu"],
+      "timeline": [],
+      "transportSummary": "",
+      "transportSegments": []
+    },
+    "adjustmentButtons": [],
     "diff": {
-      "summary": "已删除咖啡站，保留西湖游览和晚餐安排。",
-      "changedPoiIds": ["cafe_lakeside_baita"],
-      "keptPoiIds": ["start_in77", "scenic_broken_bridge", "dinner_xinbailu_hubin"]
-    }
+      "title": "已删除咖啡点",
+      "action": "中途少一次停留，直接从景点前往晚餐。",
+      "rows": [
+        { "label": "删除节点", "value": "湖畔白塔咖啡" }
+      ]
+    },
+    "message": ""
   }
 }
 ```
 
 ## GET /api/pois
 
-返回 P0 可用的 mock POI 列表。
-
-### Response
+返回 P0 可用的 mock 地点列表。为兼容旧入口保留该接口，但返回字段为新契约的 `places`。
 
 ```json
 {
-  "pois": [
-    {
-      "poiId": "scenic_broken_bridge",
-      "name": "断桥残雪",
-      "type": "景点",
-      "tags": ["西湖经典", "拍照", "步行友好"]
-    }
-  ]
+  "places": []
 }
 ```
-
-完整数据来源见 `data/pois.csv`。
