@@ -17,8 +17,10 @@ app.add_middleware(
 )
 
 
-class TextRequest(BaseModel):
+class GenerateRequest(BaseModel):
     text: str = ""
+    inputText: str = ""
+    selectedPreferences: list[str] = []
 
 
 class AdjustRequest(BaseModel):
@@ -26,7 +28,10 @@ class AdjustRequest(BaseModel):
     adjustmentId: str | None = None
     action: Literal["replace", "delete", "moveUp", "moveDown"] | None = None
     nodeId: str | None = None
+    targetNodeId: str | None = None
+    direction: Literal["up", "down"] | None = None
     route: dict | None = None
+    currentRoute: dict | None = None
 
 
 CONSTRAINTS = {
@@ -358,6 +363,25 @@ def _route_data(route: dict | None = None, diff: dict | None = None, message: st
     }
 
 
+def _ok_response(route_data: dict) -> dict:
+    return {
+        "success": True,
+        "data": deepcopy(route_data),
+        "routeData": deepcopy(route_data),
+        "meta": {"mock": True, "version": "v0.1"},
+    }
+
+
+def _error_response(message: str, **details: object) -> dict:
+    return {
+        "success": False,
+        "error": {"message": message, **details},
+        "data": None,
+        "routeData": None,
+        "meta": {"mock": True, "version": "v0.1"},
+    }
+
+
 def _route_from_patch(patch: dict) -> dict:
     route = deepcopy(DEFAULT_ROUTE)
     route.update(deepcopy(patch))
@@ -487,13 +511,13 @@ def health() -> dict:
 
 
 @app.post("/api/parse")
-def parse_text(_: TextRequest) -> dict:
+def parse_text(_: GenerateRequest) -> dict:
     return {"constraints": deepcopy(CONSTRAINTS)}
 
 
 @app.post("/api/route/generate")
-def generate_route(_: TextRequest) -> dict:
-    return {"routeData": _route_data(diff=None)}
+def generate_route(_: GenerateRequest) -> dict:
+    return _ok_response(_route_data(diff=None))
 
 
 @app.post("/api/route/adjust")
@@ -503,25 +527,34 @@ def adjust_route(request: AdjustRequest) -> dict:
 
     if adjustment_type in ADJUSTMENTS:
         route, diff = _shortcut_adjustment(adjustment_type)
-        return {"routeData": _route_data(route=route, diff=diff)}
+        return _ok_response(_route_data(route=route, diff=diff))
 
-    base_route = request.route or deepcopy(DEFAULT_ROUTE)
-    if request.action and request.nodeId:
-        if request.action == "replace":
-            route, diff = _replace_node(base_route, request.nodeId)
-        elif request.action == "delete":
-            route, diff = _delete_node(base_route, request.nodeId)
-        elif request.action == "moveUp":
-            route, diff = _move_node(base_route, request.nodeId, -1)
+    action = request.action
+    if adjustment_type == "replaceNode":
+        action = "replace"
+    elif adjustment_type == "deleteNode":
+        action = "delete"
+    elif adjustment_type == "moveNode":
+        action = "moveUp" if request.direction == "up" else "moveDown"
+
+    node_id = request.nodeId or request.targetNodeId
+    base_route = request.route or request.currentRoute or deepcopy(DEFAULT_ROUTE)
+    if action and node_id:
+        if action == "replace":
+            route, diff = _replace_node(base_route, node_id)
+        elif action == "delete":
+            route, diff = _delete_node(base_route, node_id)
+        elif action == "moveUp":
+            route, diff = _move_node(base_route, node_id, -1)
         else:
-            route, diff = _move_node(base_route, request.nodeId, 1)
-        return {"routeData": _route_data(route=route, diff=diff)}
+            route, diff = _move_node(base_route, node_id, 1)
+        return _ok_response(_route_data(route=route, diff=diff))
 
-    return {
-        "error": "这个调整暂时不支持",
-        "supportedAdjustmentTypes": list(ADJUSTMENTS),
-        "supportedNodeActions": ["replace", "delete", "moveUp", "moveDown"],
-    }
+    return _error_response(
+        "这个调整暂时不支持",
+        supportedAdjustmentTypes=list(ADJUSTMENTS),
+        supportedNodeActions=["replaceNode", "deleteNode", "moveNode"],
+    )
 
 
 @app.get("/api/pois")
