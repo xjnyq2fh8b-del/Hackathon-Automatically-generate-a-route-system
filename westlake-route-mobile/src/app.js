@@ -1,4 +1,5 @@
 const app = document.querySelector("#app");
+const USE_BACKEND_API = false;
 
 const mockRouteData = {
   input: {
@@ -407,6 +408,51 @@ function buildDefaultRoute() {
   return resolveRoute(mockRouteData.routes.default);
 }
 
+function generateRouteLocal() {
+  return buildDefaultRoute();
+}
+
+function adjustRouteLocal(adjustmentType, currentRoute, targetNodeId) {
+  const adjustment = mockRouteData.adjustments[adjustmentType];
+  if (!adjustment || !currentRoute) return null;
+
+  const nextRoute = resolveRoute({
+    ...mockRouteData.routes.default,
+    ...adjustment.routePatch,
+    id: currentRoute.id,
+    label: currentRoute.label,
+    name: currentRoute.name,
+  });
+
+  return {
+    route: nextRoute,
+    diff: clone(adjustment.diff),
+    targetNodeId,
+  };
+}
+
+async function generateRouteFromApi() {
+  return null;
+}
+
+async function adjustRouteFromApi() {
+  return null;
+}
+
+async function generateRouteData() {
+  if (USE_BACKEND_API) {
+    return generateRouteFromApi();
+  }
+  return generateRouteLocal();
+}
+
+async function adjustRouteData(adjustmentType, currentRoute, targetNodeId) {
+  if (USE_BACKEND_API) {
+    return adjustRouteFromApi(adjustmentType, currentRoute, targetNodeId);
+  }
+  return adjustRouteLocal(adjustmentType, currentRoute, targetNodeId);
+}
+
 function formatDuration(minutes) {
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
@@ -512,11 +558,16 @@ function startGeneration() {
   });
 
   [1, 2, 3].forEach((step, index) => {
-    window.setTimeout(() => {
+    window.setTimeout(async () => {
       if (step < 3) {
         setState({ loadingStep: step });
       } else {
-        const route = buildDefaultRoute();
+        const route = await generateRouteData();
+        if (!route) {
+          showToast("路线生成暂时不可用");
+          setState({ view: "input", loadingStep: 0 });
+          return;
+        }
         setState({
           view: "result",
           loadingStep: 3,
@@ -529,28 +580,20 @@ function startGeneration() {
   });
 }
 
-function applyAdjustment(type) {
+async function applyAdjustment(type, targetNodeId) {
   if (!state.route) return;
-  const adjustment = mockRouteData.adjustments[type];
-  if (!adjustment) return;
-
   const previousRoute = clone(state.route);
-  const nextRoute = resolveRoute({
-    ...mockRouteData.routes.default,
-    ...adjustment.routePatch,
-    id: state.route.id,
-    label: state.route.label,
-    name: state.route.name,
-  });
+  const result = await adjustRouteData(type, state.route, targetNodeId);
+  if (!result) return;
 
   setState({
     previousRoute,
-    route: nextRoute,
-    diff: clone(adjustment.diff),
-    selectedNodeId: nextRoute.nodes[0]?.id,
+    route: result.route,
+    diff: result.diff,
+    selectedNodeId: result.route.nodes[0]?.id,
     activeAdjustment: type,
     drawerOpen: true,
-    hint: nextRoute.hint || "",
+    hint: result.route.hint || "",
   });
 }
 
@@ -649,9 +692,9 @@ function replaceNode(id) {
   if (!state.route) return;
   const target = state.route.nodes.find((node) => node.id === id);
   if (!target) return;
-  if (target.type === "dinner") return applyAdjustment("restaurantBusy");
-  if (target.type === "coffee") return applyAdjustment("budget100");
-  if (target.type === "scenic") return applyAdjustment("photo");
+  if (target.type === "dinner") return applyAdjustment("restaurantBusy", id);
+  if (target.type === "coffee") return applyAdjustment("budget100", id);
+  if (target.type === "scenic") return applyAdjustment("photo", id);
   showToast("这个节点建议保留为路线起点");
 }
 
@@ -1019,7 +1062,7 @@ function handleAction(event) {
   }
   if (action === "openDrawer") setState({ drawerOpen: true });
   if (action === "closeDrawer") setState({ drawerOpen: false });
-  if (action === "adjust") applyAdjustment(target.dataset.type);
+  if (action === "adjust") applyAdjustment(target.dataset.type, state.selectedNodeId);
   if (action === "followRoute") showToast("已进入路线执行视图");
   if (action === "moveNodeUp") moveNode(id, -1);
   if (action === "moveNodeDown") moveNode(id, 1);
