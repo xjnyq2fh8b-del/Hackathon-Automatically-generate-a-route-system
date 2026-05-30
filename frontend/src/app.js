@@ -173,7 +173,7 @@ const mockRouteData = {
   ],
   adjustments: {
     restaurantBusy: {
-      routePatch: {
+      route: {
         explanation: "已为你只替换晚餐点，其他安排保持不变。",
         durationMinutes: 152,
         budgetPerPerson: 108,
@@ -206,7 +206,7 @@ const mockRouteData = {
       },
     },
     budget100: {
-      routePatch: {
+      route: {
         explanation: "已把预算压到人均100以内。",
         durationMinutes: 145,
         budgetPerPerson: 95,
@@ -237,7 +237,7 @@ const mockRouteData = {
       },
     },
     noCoffee: {
-      routePatch: {
+      route: {
         explanation: "已删除咖啡节点，路线更短。",
         durationMinutes: 125,
         budgetPerPerson: 78,
@@ -267,7 +267,7 @@ const mockRouteData = {
       },
     },
     twoHours: {
-      routePatch: {
+      route: {
         explanation: "已压缩到约2小时，优先保留核心景点和晚餐。",
         durationMinutes: 118,
         budgetPerPerson: 78,
@@ -295,7 +295,7 @@ const mockRouteData = {
       },
     },
     photo: {
-      routePatch: {
+      route: {
         explanation: "已增加更适合拍照的湖景停留点。",
         durationMinutes: 175,
         budgetPerPerson: 120,
@@ -418,7 +418,7 @@ function adjustRouteLocal(adjustmentType, currentRoute, targetNodeId) {
 
   const nextRoute = resolveRoute({
     ...mockRouteData.routes.default,
-    ...adjustment.routePatch,
+    ...adjustment.route,
     id: currentRoute.id,
     label: currentRoute.label,
     name: currentRoute.name,
