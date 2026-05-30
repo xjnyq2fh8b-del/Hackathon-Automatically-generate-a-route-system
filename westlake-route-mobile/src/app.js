@@ -1,167 +1,352 @@
 const app = document.querySelector("#app");
 
-const defaultInput =
-  "我在湖滨银泰，下午2点到6点，想逛西湖、喝咖啡、吃晚饭，人均150，不想排队";
-
-const examples = [
-  defaultInput,
-  "带老人和小孩看西湖，不想走太多路，晚饭吃杭帮菜，预算人均120",
-  "想找适合拍照但不要太网红的咖啡店，晚上顺路吃本地特色",
-];
-
-const preferenceTags = ["少排队", "少走路", "拍照好看", "本地特色", "安静", "带老人小孩"];
-
-const typeText = {
-  start: "起点",
-  scenic: "景点",
-  coffee: "咖啡",
-  dinner: "晚餐",
-  rest: "休息",
+const mockRouteData = {
+  input: {
+    defaultText:
+      "我在湖滨银泰，下午2点到6点，想逛西湖、喝咖啡、吃晚饭，人均150，不想排队",
+    examples: [
+      "我在湖滨银泰，下午2点到6点，想逛西湖、喝咖啡、吃晚饭，人均150，不想排队",
+      "带老人和小孩看西湖，不想走太多路，晚饭吃杭帮菜，预算人均120",
+      "想找适合拍照但不要太网红的咖啡店，晚上顺路吃本地特色",
+    ],
+    preferenceTags: ["少排队", "少走路", "拍照好看", "本地特色", "安静", "带老人小孩"],
+    defaultPreferences: ["少排队"],
+  },
+  labels: {
+    typeText: {
+      start: "起点",
+      scenic: "景点",
+      coffee: "咖啡",
+      dinner: "晚餐",
+      rest: "休息",
+    },
+    typeIcon: {
+      start: "起",
+      scenic: "景",
+      coffee: "咖",
+      dinner: "食",
+      rest: "休",
+    },
+  },
+  constraints: {
+    summary: "湖滨银泰｜14:00-18:00｜人均150｜少排队",
+    chips: [
+      { key: "出发地", value: "湖滨银泰 in77" },
+      { key: "时间", value: "14:00-18:00" },
+      { key: "预算", value: "人均150" },
+      { key: "偏好", value: "少排队" },
+    ],
+  },
+  places: [
+    {
+      id: "in77",
+      type: "start",
+      name: "湖滨银泰 in77",
+      shortName: "湖滨银泰",
+      address: "上城区湖滨商圈",
+      openHours: "全天可达",
+      rating: "4.7",
+      price: "免费",
+      tags: ["地铁近", "集合方便", "商圈补给"],
+      reason: "作为出发点，减少集合点和线路成本。",
+      note: "",
+      map: { x: 72, y: 28 },
+    },
+    {
+      id: "brokenBridge",
+      type: "scenic",
+      name: "断桥残雪",
+      shortName: "断桥残雪",
+      address: "西湖区北山街",
+      openHours: "全天开放",
+      rating: "4.6",
+      price: "免费",
+      tags: ["西湖经典", "拍照友好", "游客友好"],
+      reason: "先去断桥，能最快进入西湖氛围，也方便后面顺路去咖啡点。",
+      note: "游客较多，但不影响路线执行。",
+      map: { x: 42, y: 42 },
+    },
+    {
+      id: "baitacoffee",
+      type: "coffee",
+      name: "湖畔白塔咖啡",
+      shortName: "白塔咖啡",
+      address: "湖滨路附近",
+      openHours: "10:00-21:30",
+      rating: "4.5",
+      price: "人均42元",
+      tags: ["安静", "低等待估计", "可休息"],
+      reason: "安排在中段休息，既不打断游览，也给晚饭前留缓冲。",
+      note: "低等待为估计标签，不代表实时排队。",
+      map: { x: 55, y: 63 },
+    },
+    {
+      id: "xinbailu",
+      type: "dinner",
+      name: "新白鹿餐厅湖滨店",
+      shortName: "新白鹿",
+      address: "上城区延安路附近",
+      openHours: "10:30-21:30",
+      rating: "4.4",
+      price: "人均78元",
+      tags: ["杭帮菜", "预算友好", "家庭友好"],
+      reason: "最后回到湖滨附近吃晚饭，结束后打车或地铁都方便。",
+      note: "晚高峰可能短时等待。",
+      map: { x: 76, y: 72 },
+    },
+    {
+      id: "nongtangli",
+      type: "dinner",
+      name: "弄堂里湖滨店",
+      shortName: "弄堂里",
+      address: "湖滨商圈附近",
+      openHours: "10:30-21:00",
+      rating: "4.3",
+      price: "人均65元",
+      tags: ["杭帮菜", "等待低", "预算更低"],
+      reason: "比原餐厅等待风险更低，人均更低，距离路线也更顺。",
+      note: "晚餐等待风险更低，适合作为当前替换点。",
+      map: { x: 70, y: 70 },
+    },
+    {
+      id: "convenienceRest",
+      type: "rest",
+      name: "湖滨轻休息点",
+      shortName: "轻休息点",
+      address: "湖滨步行街附近",
+      openHours: "全天可达",
+      rating: "4.2",
+      price: "免费",
+      tags: ["省预算", "少停留", "顺路"],
+      reason: "保留休息缓冲，同时把预算留给晚餐。",
+      note: "停留时间较短，适合预算收紧时使用。",
+      map: { x: 60, y: 58 },
+    },
+    {
+      id: "photoPoint",
+      type: "scenic",
+      name: "北山街湖景点",
+      shortName: "北山街湖景",
+      address: "西湖区北山街沿线",
+      openHours: "全天开放",
+      rating: "4.5",
+      price: "免费",
+      tags: ["湖景", "拍照好看", "不太网红"],
+      reason: "比热门机位更分散，适合想拍照但不想太拥挤的路线。",
+      note: "下午光线较柔和，但仍建议避开桥面人流。",
+      map: { x: 36, y: 54 },
+    },
+  ],
+  routes: {
+    default: {
+      id: "westlake-half-day",
+      label: "当前推荐",
+      name: "轻松西湖半日线",
+      explanation: "先从湖滨银泰进入西湖核心景观，再安排咖啡休息，最后顺路吃晚饭。",
+      durationMinutes: 166,
+      budgetPerPerson: 120,
+      walkingKm: 2.3,
+      waitRisk: "低-中",
+      placeIds: ["in77", "brokenBridge", "baitacoffee", "xinbailu"],
+      timeline: [
+        { placeId: "in77", arrive: "14:00", leave: "14:05" },
+        { placeId: "brokenBridge", arrive: "14:17", leave: "14:52" },
+        { placeId: "baitacoffee", arrive: "15:04", leave: "15:39" },
+        { placeId: "xinbailu", arrive: "15:51", leave: "16:46" },
+      ],
+      transportSummary:
+        "全程步行优先，单段最长约12分钟；如带老人小孩，可将咖啡到晚餐段改为打车。",
+      transportSegments: [
+        { fromId: "in77", toId: "brokenBridge", method: "步行", duration: "约12分钟" },
+        { fromId: "brokenBridge", toId: "baitacoffee", method: "步行", duration: "约8分钟" },
+        { fromId: "baitacoffee", toId: "xinbailu", method: "步行", duration: "约10分钟" },
+      ],
+    },
+  },
+  adjustmentButtons: [
+    { type: "restaurantBusy", label: "餐厅排队太久" },
+    { type: "budget100", label: "预算降到100" },
+    { type: "noCoffee", label: "不要咖啡" },
+    { type: "twoHours", label: "只剩2小时" },
+    { type: "photo", label: "想更适合拍照" },
+  ],
+  adjustments: {
+    restaurantBusy: {
+      routePatch: {
+        explanation: "已为你只替换晚餐点，其他安排保持不变。",
+        durationMinutes: 152,
+        budgetPerPerson: 108,
+        walkingKm: 2.1,
+        waitRisk: "低",
+        placeIds: ["in77", "brokenBridge", "baitacoffee", "nongtangli"],
+        timeline: [
+          { placeId: "in77", arrive: "14:00", leave: "14:05" },
+          { placeId: "brokenBridge", arrive: "14:17", leave: "14:52" },
+          { placeId: "baitacoffee", arrive: "15:04", leave: "15:39" },
+          { placeId: "nongtangli", arrive: "15:46", leave: "16:32" },
+        ],
+        transportSegments: [
+          { fromId: "in77", toId: "brokenBridge", method: "步行", duration: "约12分钟" },
+          { fromId: "brokenBridge", toId: "baitacoffee", method: "步行", duration: "约8分钟" },
+          { fromId: "baitacoffee", toId: "nongtangli", method: "步行", duration: "约7分钟" },
+        ],
+      },
+      diff: {
+        title: "已避开排队晚餐",
+        action: "晚餐改为弄堂里湖滨店，其他节点保持不变。",
+        rows: [
+          { label: "晚餐", value: "新白鹿餐厅湖滨店 → 弄堂里湖滨店" },
+          { label: "等待风险", value: "低-中 → 低" },
+          { label: "预计人均", value: "120元 → 108元" },
+          { label: "总时长", value: "2小时46分钟 → 2小时32分钟" },
+          { label: "步行距离", value: "2.3km → 2.1km" },
+          { label: "保留节点", value: "湖滨银泰 in77、断桥残雪、湖畔白塔咖啡" },
+        ],
+      },
+    },
+    budget100: {
+      routePatch: {
+        explanation: "已把预算压到人均100以内。",
+        durationMinutes: 145,
+        budgetPerPerson: 95,
+        walkingKm: 2.0,
+        waitRisk: "低",
+        placeIds: ["in77", "brokenBridge", "convenienceRest", "nongtangli"],
+        timeline: [
+          { placeId: "in77", arrive: "14:00", leave: "14:05" },
+          { placeId: "brokenBridge", arrive: "14:17", leave: "14:52" },
+          { placeId: "convenienceRest", arrive: "15:00", leave: "15:12" },
+          { placeId: "nongtangli", arrive: "15:20", leave: "16:05" },
+        ],
+        transportSegments: [
+          { fromId: "in77", toId: "brokenBridge", method: "步行", duration: "约12分钟" },
+          { fromId: "brokenBridge", toId: "convenienceRest", method: "步行", duration: "约8分钟" },
+          { fromId: "convenienceRest", toId: "nongtangli", method: "步行", duration: "约8分钟" },
+        ],
+      },
+      diff: {
+        title: "预算已压到 100 内",
+        action: "咖啡改为轻休息点，晚餐改为更低预算方案。",
+        rows: [
+          { label: "预计人均", value: "120元 → 95元" },
+          { label: "调整节点", value: "湖畔白塔咖啡 → 湖滨轻休息点；晚餐 → 弄堂里" },
+          { label: "总时长", value: "2小时46分钟 → 2小时25分钟" },
+          { label: "保留节点", value: "湖滨银泰 in77、断桥残雪" },
+        ],
+      },
+    },
+    noCoffee: {
+      routePatch: {
+        explanation: "已删除咖啡节点，路线更短。",
+        durationMinutes: 125,
+        budgetPerPerson: 78,
+        walkingKm: 2.0,
+        waitRisk: "中",
+        placeIds: ["in77", "brokenBridge", "xinbailu"],
+        timeline: [
+          { placeId: "in77", arrive: "14:00", leave: "14:05" },
+          { placeId: "brokenBridge", arrive: "14:17", leave: "14:52" },
+          { placeId: "xinbailu", arrive: "15:06", leave: "15:53" },
+        ],
+        transportSegments: [
+          { fromId: "in77", toId: "brokenBridge", method: "步行", duration: "约12分钟" },
+          { fromId: "brokenBridge", toId: "xinbailu", method: "步行", duration: "约14分钟" },
+        ],
+      },
+      diff: {
+        title: "已删除咖啡点",
+        action: "中途少一次停留，直接从景点前往晚餐。",
+        rows: [
+          { label: "删除节点", value: "湖畔白塔咖啡" },
+          { label: "预计人均", value: "120元 → 78元" },
+          { label: "总时长", value: "2小时46分钟 → 2小时05分钟" },
+          { label: "步行距离", value: "2.3km → 2.0km" },
+          { label: "保留节点", value: "湖滨银泰 in77、断桥残雪、新白鹿餐厅湖滨店" },
+        ],
+      },
+    },
+    twoHours: {
+      routePatch: {
+        explanation: "已压缩到约2小时，优先保留核心景点和晚餐。",
+        durationMinutes: 118,
+        budgetPerPerson: 78,
+        walkingKm: 1.8,
+        waitRisk: "中",
+        placeIds: ["in77", "brokenBridge", "xinbailu"],
+        timeline: [
+          { placeId: "in77", arrive: "14:00", leave: "14:05" },
+          { placeId: "brokenBridge", arrive: "14:17", leave: "14:42" },
+          { placeId: "xinbailu", arrive: "14:56", leave: "15:45" },
+        ],
+        transportSegments: [
+          { fromId: "in77", toId: "brokenBridge", method: "步行", duration: "约12分钟" },
+          { fromId: "brokenBridge", toId: "xinbailu", method: "步行", duration: "约14分钟" },
+        ],
+      },
+      diff: {
+        title: "已压缩到 2 小时",
+        action: "删除或压缩中途停留，牺牲一部分体验完整度。",
+        rows: [
+          { label: "总时长", value: "2小时46分钟 → 1小时58分钟" },
+          { label: "调整方式", value: "只保留起点、断桥和晚餐" },
+          { label: "保留节点", value: "湖滨银泰 in77、断桥残雪、新白鹿餐厅湖滨店" },
+        ],
+      },
+    },
+    photo: {
+      routePatch: {
+        explanation: "已增加更适合拍照的湖景停留点。",
+        durationMinutes: 175,
+        budgetPerPerson: 120,
+        walkingKm: 2.6,
+        waitRisk: "低-中",
+        placeIds: ["in77", "brokenBridge", "photoPoint", "baitacoffee", "xinbailu"],
+        timeline: [
+          { placeId: "in77", arrive: "14:00", leave: "14:05" },
+          { placeId: "brokenBridge", arrive: "14:17", leave: "14:52" },
+          { placeId: "photoPoint", arrive: "14:59", leave: "15:20" },
+          { placeId: "baitacoffee", arrive: "15:29", leave: "16:04" },
+          { placeId: "xinbailu", arrive: "16:14", leave: "17:01" },
+        ],
+        transportSegments: [
+          { fromId: "in77", toId: "brokenBridge", method: "步行", duration: "约12分钟" },
+          { fromId: "brokenBridge", toId: "photoPoint", method: "步行", duration: "约7分钟" },
+          { fromId: "photoPoint", toId: "baitacoffee", method: "步行", duration: "约9分钟" },
+          { fromId: "baitacoffee", toId: "xinbailu", method: "步行", duration: "约10分钟" },
+        ],
+      },
+      diff: {
+        title: "已加强拍照体验",
+        action: "增加北山街湖景点，同时保留断桥。",
+        rows: [
+          { label: "新增节点", value: "北山街湖景点" },
+          { label: "总时长", value: "2小时46分钟 → 2小时55分钟" },
+          { label: "步行距离", value: "2.3km → 2.6km" },
+          { label: "保留节点", value: "湖滨银泰 in77、断桥残雪、湖畔白塔咖啡、新白鹿餐厅湖滨店" },
+        ],
+      },
+    },
+  },
 };
 
-const typeIcon = {
-  start: "起",
-  scenic: "景",
-  coffee: "咖",
-  dinner: "食",
-  rest: "休",
-};
-
-const basePois = {
-  in77: {
-    id: "in77",
-    type: "start",
-    name: "湖滨银泰 in77",
-    address: "上城区湖滨商圈",
-    openHours: "全天可达",
-    rating: "4.7",
-    price: "免费",
-    priceValue: 0,
-    tags: ["地铁近", "集合方便", "商圈补给"],
-    reason: "离西湖东线近，适合作为路线起点。",
-    arrive: "14:00",
-    leave: "14:05",
-    note: "",
-    next: "步行约12分钟，从湖滨进入西湖东线。",
-    map: { x: 72, y: 28 },
-  },
-  brokenBridge: {
-    id: "brokenBridge",
-    type: "scenic",
-    name: "断桥残雪",
-    address: "西湖区北山街",
-    openHours: "全天开放",
-    rating: "4.6",
-    price: "免费",
-    priceValue: 0,
-    tags: ["西湖经典", "拍照友好", "游客友好"],
-    reason: "能快速进入西湖氛围，适合下午轻松游览。",
-    arrive: "14:17",
-    leave: "14:52",
-    note: "游客较多，但不影响路线执行。",
-    next: "步行约8分钟，沿湖边向南移动。",
-    map: { x: 42, y: 42 },
-  },
-  baitacoffee: {
-    id: "baitacoffee",
-    type: "coffee",
-    name: "湖畔白塔咖啡",
-    address: "湖滨路附近",
-    openHours: "10:00-21:30",
-    rating: "4.5",
-    price: "人均42元",
-    priceValue: 42,
-    tags: ["安静", "低等待估计", "可休息"],
-    reason: "距离上一站约8分钟，适合中途休息。",
-    arrive: "15:04",
-    leave: "15:39",
-    note: "低等待为样例风险标签，不代表实时排队。",
-    next: "步行约10分钟，返回湖滨商圈。",
-    map: { x: 55, y: 63 },
-  },
-  xinbailu: {
-    id: "xinbailu",
-    type: "dinner",
-    name: "新白鹿餐厅湖滨店",
-    address: "上城区延安路附近",
-    openHours: "10:30-21:30",
-    rating: "4.4",
-    price: "人均78元",
-    priceValue: 78,
-    tags: ["杭帮菜", "预算友好", "家庭友好"],
-    reason: "在预算内，离湖滨近，适合晚餐收尾。",
-    arrive: "15:51",
-    leave: "16:46",
-    note: "晚高峰可能短时等待。",
-    next: "",
-    map: { x: 76, y: 72 },
-  },
-};
-
-const alternativePois = {
-  nongtangli: {
-    id: "nongtangli",
-    type: "dinner",
-    name: "弄堂里湖滨店",
-    address: "湖滨商圈附近",
-    openHours: "10:30-21:00",
-    rating: "4.3",
-    price: "人均65元",
-    priceValue: 65,
-    tags: ["杭帮菜", "等待低", "预算更低"],
-    reason: "比原餐厅等待风险更低，人均更低，距离路线也更顺。",
-    arrive: "15:45",
-    leave: "16:32",
-    note: "晚餐等待风险更低，适合作为当前替换点。",
-    next: "",
-    map: { x: 70, y: 70 },
-  },
-  convenienceRest: {
-    id: "convenienceRest",
-    type: "rest",
-    name: "湖滨轻休息点",
-    address: "湖滨步行街附近",
-    openHours: "全天可达",
-    rating: "4.2",
-    price: "免费",
-    priceValue: 0,
-    tags: ["省预算", "少停留", "顺路"],
-    reason: "保留休息缓冲，同时把预算留给晚餐。",
-    arrive: "15:00",
-    leave: "15:12",
-    note: "停留时间较短，适合预算收紧时使用。",
-    next: "步行约8分钟，回到湖滨商圈。",
-    map: { x: 60, y: 58 },
-  },
-  photoPoint: {
-    id: "photoPoint",
-    type: "scenic",
-    name: "北山街湖景点",
-    address: "西湖区北山街沿线",
-    openHours: "全天开放",
-    rating: "4.5",
-    price: "免费",
-    priceValue: 0,
-    tags: ["湖景", "拍照好看", "不太网红"],
-    reason: "比热门机位更分散，适合想拍照但不想太拥挤的路线。",
-    arrive: "14:56",
-    leave: "15:20",
-    note: "下午光线较柔和，但仍建议避开桥面人流。",
-    next: "步行约9分钟，前往咖啡点休息。",
-    map: { x: 36, y: 54 },
-  },
-};
+const placeById = Object.fromEntries(mockRouteData.places.map((place) => [place.id, place]));
+const typeText = mockRouteData.labels.typeText;
+const typeIcon = mockRouteData.labels.typeIcon;
 
 let state = {
   view: "input",
-  inputText: defaultInput,
-  selectedPreferences: ["少排队"],
+  inputText: mockRouteData.input.defaultText,
+  selectedPreferences: [...mockRouteData.input.defaultPreferences],
   micActive: false,
   loadingStep: 0,
   route: null,
   previousRoute: null,
   diff: null,
   selectedNodeId: null,
+  activeTab: "route",
+  drawerOpen: false,
+  transportOpen: false,
+  expandedNodes: [],
   activeAdjustment: null,
   toast: "",
   hint: "",
@@ -171,46 +356,55 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
-function buildDefaultRoute() {
-  const nodes = [
-    clone(basePois.in77),
-    clone(basePois.brokenBridge),
-    clone(basePois.baitacoffee),
-    clone(basePois.xinbailu),
-  ];
+function getPlace(id) {
+  return clone(placeById[id]);
+}
+
+function resolveRoute(routeConfig) {
+  const timelineByPlace = Object.fromEntries(routeConfig.timeline.map((item) => [item.placeId, item]));
+  const transportSegments = routeConfig.transportSegments.map((segment) => {
+    const from = placeById[segment.fromId];
+    const to = placeById[segment.toId];
+    return {
+      ...clone(segment),
+      from: from.name,
+      to: to.name,
+      arriveAt: timelineByPlace[segment.toId]?.arrive || "",
+    };
+  });
+
+  const nodes = routeConfig.placeIds.map((placeId, index) => {
+    const place = getPlace(placeId);
+    const time = timelineByPlace[placeId] || {};
+    const segment = transportSegments[index];
+    const nextPlace = routeConfig.placeIds[index + 1] ? placeById[routeConfig.placeIds[index + 1]] : null;
+
+    return {
+      ...place,
+      arrive: time.arrive || "",
+      leave: time.leave || "",
+      next: segment && nextPlace ? `${segment.method}${segment.duration}，前往${nextPlace.name}。` : "",
+    };
+  });
 
   return {
-    id: "westlake-half-day",
-    label: "当前推荐",
-    name: "轻松西湖半日线",
-    explanation:
-      "这条路线适合下午轻松逛西湖：先从湖滨银泰进入西湖核心景观，再安排咖啡休息，最后顺路吃晚饭。",
-    durationMinutes: 166,
-    budgetPerPerson: 120,
-    walkingKm: 2.3,
-    waitRisk: "低-中",
-    constraints: buildConstraintsFromInput(),
-    transportSummary:
-      "全程步行优先，单段最长约12分钟；如带老人小孩，可将咖啡到晚餐段改为打车。",
-    transportSegments: [
-      { from: "湖滨银泰 in77", to: "断桥残雪", method: "步行", duration: "约12分钟" },
-      { from: "断桥残雪", to: "湖畔白塔咖啡", method: "步行", duration: "约8分钟" },
-      { from: "湖畔白塔咖啡", to: "新白鹿餐厅湖滨店", method: "步行", duration: "约10分钟" },
-    ],
+    id: routeConfig.id,
+    label: routeConfig.label,
+    name: routeConfig.name,
+    explanation: routeConfig.explanation,
+    durationMinutes: routeConfig.durationMinutes,
+    budgetPerPerson: routeConfig.budgetPerPerson,
+    walkingKm: routeConfig.walkingKm,
+    waitRisk: routeConfig.waitRisk,
+    transportSummary: routeConfig.transportSummary || mockRouteData.routes.default.transportSummary,
     nodes,
+    transportSegments,
+    hint: "",
   };
 }
 
-function buildConstraintsFromInput() {
-  const preferences = state.selectedPreferences.length ? state.selectedPreferences.join(" / ") : "少排队";
-  return [
-    { key: "出发地", value: "湖滨银泰 in77" },
-    { key: "时间", value: "14:00-18:00" },
-    { key: "预算", value: "人均150" },
-    { key: "目标", value: "西湖 / 咖啡 / 晚饭" },
-    { key: "偏好", value: preferences },
-    { key: "交通", value: "步行优先" },
-  ];
+function buildDefaultRoute() {
+  return resolveRoute(mockRouteData.routes.default);
 }
 
 function formatDuration(minutes) {
@@ -220,54 +414,26 @@ function formatDuration(minutes) {
   return `${hours}小时${String(rest).padStart(2, "0")}分钟`;
 }
 
-function recalculateRoute(route, reason = "") {
-  const updated = clone(route);
-  const nodeIds = updated.nodes.map((node) => node.id);
-  const hasCoffee = nodeIds.includes("baitacoffee");
-  const hasNongtangli = nodeIds.includes("nongtangli");
-  const hasPhoto = nodeIds.includes("photoPoint");
-  const hasRest = nodeIds.includes("convenienceRest");
-
-  if (!hasCoffee && nodeIds.length === 3) {
-    updated.durationMinutes = 125;
-    updated.budgetPerPerson = hasNongtangli ? 65 : 78;
-    updated.walkingKm = hasNongtangli ? 1.9 : 2.0;
-    updated.waitRisk = hasNongtangli ? "低" : "中";
-  } else if (hasNongtangli) {
-    updated.durationMinutes = 152;
-    updated.budgetPerPerson = hasRest ? 95 : 108;
-    updated.walkingKm = 2.1;
-    updated.waitRisk = "低";
-  } else if (hasRest) {
-    updated.durationMinutes = 145;
-    updated.budgetPerPerson = 95;
-    updated.walkingKm = 2.0;
-    updated.waitRisk = "低";
-  } else if (hasPhoto) {
-    updated.durationMinutes = 175;
-    updated.budgetPerPerson = 120;
-    updated.walkingKm = 2.6;
-    updated.waitRisk = "低-中";
-  } else {
-    updated.durationMinutes = 166;
-    updated.budgetPerPerson = 120;
-    updated.walkingKm = 2.3;
-    updated.waitRisk = "低-中";
-  }
-
-  const routeOrderPenalty = calculateOrderPenalty(updated.nodes);
-  updated.durationMinutes += routeOrderPenalty.minutes;
-  updated.walkingKm = Number((updated.walkingKm + routeOrderPenalty.km).toFixed(1));
-  updated.hint = routeOrderPenalty.minutes > 0 ? "这个顺序会略绕路，建议保留原顺序。" : "";
-
-  updated.transportSegments = buildTransportSegments(updated.nodes);
-  updated.nodes = refreshTimes(updated.nodes, updated.durationMinutes);
-
-  if (reason) {
-    updated.explanation = reason;
-  }
-
-  return updated;
+function routeToConfig(route) {
+  return {
+    id: route.id,
+    label: route.label,
+    name: route.name,
+    explanation: route.explanation,
+    durationMinutes: route.durationMinutes,
+    budgetPerPerson: route.budgetPerPerson,
+    walkingKm: route.walkingKm,
+    waitRisk: route.waitRisk,
+    transportSummary: route.transportSummary,
+    placeIds: route.nodes.map((node) => node.id),
+    timeline: route.nodes.map((node) => ({ placeId: node.id, arrive: node.arrive, leave: node.leave })),
+    transportSegments: route.transportSegments.map((segment) => ({
+      fromId: segment.fromId,
+      toId: segment.toId,
+      method: segment.method,
+      duration: segment.duration,
+    })),
+  };
 }
 
 function calculateOrderPenalty(nodes) {
@@ -275,69 +441,39 @@ function calculateOrderPenalty(nodes) {
   let penalty = 0;
   nodes.forEach((node, index) => {
     const previous = nodes[index - 1];
-    if (!previous) return;
-    if (naturalOrder.indexOf(previous.id) > naturalOrder.indexOf(node.id)) penalty += 1;
+    if (previous && naturalOrder.indexOf(previous.id) > naturalOrder.indexOf(node.id)) penalty += 1;
   });
   return { minutes: penalty * 12, km: penalty * 0.3 };
 }
 
-function buildTransportSegments(nodes) {
-  const segmentText = {
-    "in77-brokenBridge": "约12分钟",
-    "brokenBridge-baitacoffee": "约8分钟",
-    "baitacoffee-xinbailu": "约10分钟",
-    "baitacoffee-nongtangli": "约7分钟",
-    "brokenBridge-xinbailu": "约14分钟",
-    "brokenBridge-nongtangli": "约12分钟",
-    "brokenBridge-photoPoint": "约7分钟",
-    "photoPoint-baitacoffee": "约9分钟",
-    "convenienceRest-nongtangli": "约8分钟",
-    "brokenBridge-convenienceRest": "约8分钟",
-    "in77-xinbailu": "约8分钟",
-    "in77-nongtangli": "约9分钟",
-  };
-
-  return nodes.slice(0, -1).map((node, index) => {
-    const next = nodes[index + 1];
-    const key = `${node.id}-${next.id}`;
-    const reverseKey = `${next.id}-${node.id}`;
-    return {
-      from: node.name,
-      to: next.name,
-      method: "步行",
-      duration: segmentText[key] || segmentText[reverseKey] || "约12分钟",
-    };
+function recalculateAfterManualChange(route, explanation) {
+  const config = routeToConfig(route);
+  const penalty = calculateOrderPenalty(route.nodes);
+  const nextRoute = resolveRoute({
+    ...config,
+    explanation,
+    durationMinutes: route.durationMinutes + penalty.minutes,
+    walkingKm: Number((route.walkingKm + penalty.km).toFixed(1)),
   });
+  nextRoute.hint = penalty.minutes > 0 ? "这个顺序会略绕路，建议保留原顺序。" : "";
+  return nextRoute;
 }
 
-function refreshTimes(nodes) {
-  const startMinutes = 14 * 60;
-  const stayByType = {
-    start: 5,
-    scenic: 35,
-    coffee: 35,
-    rest: 12,
-    dinner: 47,
-  };
-  let cursor = startMinutes;
-  return nodes.map((node, index) => {
-    const updated = clone(node);
-    const stay = stayByType[updated.type] || 25;
-    updated.arrive = toClock(cursor);
-    updated.leave = toClock(cursor + stay);
-    const segment = index < nodes.length - 1 ? buildTransportSegments(nodes)[index] : null;
-    updated.next = segment
-      ? `${segment.method}${segment.duration}，前往${nodes[index + 1].name}。`
-      : "";
-    cursor += stay + (segment ? Number(segment.duration.match(/\d+/)?.[0] || 10) : 0);
-    return updated;
-  });
+function getNextAction(route) {
+  const index = Math.max(0, route.nodes.findIndex((node) => node.id === state.selectedNodeId));
+  const safeIndex = index >= route.nodes.length - 1 ? 0 : index;
+  const current = route.nodes[safeIndex];
+  const next = route.nodes[safeIndex + 1] || route.nodes[1] || route.nodes[0];
+  const segment = route.transportSegments[safeIndex] || route.transportSegments[0];
+  return { current, next, segment };
 }
 
-function toClock(totalMinutes) {
-  const hour = Math.floor(totalMinutes / 60);
-  const minute = totalMinutes % 60;
-  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+function keptNodes(previousRoute, nextRoute) {
+  const nextNames = new Set(nextRoute.nodes.map((node) => node.name));
+  return previousRoute.nodes
+    .filter((node) => nextNames.has(node.name))
+    .map((node) => node.name)
+    .join("、");
 }
 
 function setState(patch) {
@@ -361,13 +497,21 @@ function showToast(message) {
   showToast.timer = window.setTimeout(() => {
     state.toast = "";
     render();
-  }, 1800);
+  }, 1600);
 }
 
 function startGeneration() {
-  setState({ view: "loading", loadingStep: 0, diff: null, previousRoute: null, activeAdjustment: null });
-  const steps = [1, 2, 3];
-  steps.forEach((step, index) => {
+  setState({
+    view: "loading",
+    loadingStep: 0,
+    diff: null,
+    previousRoute: null,
+    activeAdjustment: null,
+    activeTab: "route",
+    drawerOpen: false,
+  });
+
+  [1, 2, 3].forEach((step, index) => {
     window.setTimeout(() => {
       if (step < 3) {
         setState({ loadingStep: step });
@@ -381,140 +525,33 @@ function startGeneration() {
           hint: "",
         });
       }
-    }, 650 + index * 760);
+    }, 520 + index * 620);
   });
 }
 
 function applyAdjustment(type) {
   if (!state.route) return;
+  const adjustment = mockRouteData.adjustments[type];
+  if (!adjustment) return;
+
   const previousRoute = clone(state.route);
-  let nextRoute = clone(state.route);
-  let diff = null;
-
-  if (type === "restaurantBusy") {
-    nextRoute.nodes = nextRoute.nodes.map((node) =>
-      node.type === "dinner" ? clone(alternativePois.nongtangli) : node,
-    );
-    nextRoute = recalculateRoute(
-      nextRoute,
-      "已为你只替换晚餐点，其他安排保持不变，整体等待风险更低。",
-    );
-    diff = {
-      title: "餐厅排队太久",
-      action: "已为你只替换晚餐点，其他安排保持不变。",
-      rows: [
-        ["晚餐", `${getDinner(previousRoute).name} → ${getDinner(nextRoute).name}`],
-        ["等待风险", `${previousRoute.waitRisk} → ${nextRoute.waitRisk}`],
-        ["预计人均", `${previousRoute.budgetPerPerson}元 → ${nextRoute.budgetPerPerson}元`],
-        ["总时长", `${formatDuration(previousRoute.durationMinutes)} → ${formatDuration(nextRoute.durationMinutes)}`],
-        ["步行距离", `${previousRoute.walkingKm}km → ${nextRoute.walkingKm}km`],
-        ["保留节点", keptNodes(previousRoute, nextRoute)],
-      ],
-    };
-  }
-
-  if (type === "budget100") {
-    nextRoute.nodes = nextRoute.nodes.map((node) => {
-      if (node.id === "baitacoffee") return clone(alternativePois.convenienceRest);
-      if (node.type === "dinner") return clone(alternativePois.nongtangli);
-      return node;
-    });
-    nextRoute = recalculateRoute(
-      nextRoute,
-      "已把预算压到人均100以内：保留西湖游览，降低休息和晚餐成本。",
-    );
-    diff = {
-      title: "预算降到 100",
-      action: "已降低晚餐预算，并把咖啡改为轻休息点。",
-      rows: [
-        ["预计人均", `${previousRoute.budgetPerPerson}元 → ${nextRoute.budgetPerPerson}元`],
-        ["调整节点", "湖畔白塔咖啡 → 湖滨轻休息点；晚餐改为弄堂里湖滨店"],
-        ["总时长", `${formatDuration(previousRoute.durationMinutes)} → ${formatDuration(nextRoute.durationMinutes)}`],
-        ["保留节点", keptNodes(previousRoute, nextRoute)],
-      ],
-    };
-  }
-
-  if (type === "noCoffee") {
-    const removed = nextRoute.nodes.find((node) => node.id === "baitacoffee" || node.type === "coffee");
-    nextRoute.nodes = nextRoute.nodes.filter((node) => node.id !== "baitacoffee" && node.type !== "coffee");
-    nextRoute = recalculateRoute(nextRoute, "已删除咖啡节点，路线更短，晚餐前少一次停留。");
-    diff = {
-      title: "不要咖啡",
-      action: "已删除咖啡节点，其他节点尽量保持顺路。",
-      rows: [
-        ["删除节点", removed ? removed.name : "咖啡点"],
-        ["预计人均", `${previousRoute.budgetPerPerson}元 → ${nextRoute.budgetPerPerson}元`],
-        ["总时长", `${formatDuration(previousRoute.durationMinutes)} → ${formatDuration(nextRoute.durationMinutes)}`],
-        ["步行距离", `${previousRoute.walkingKm}km → ${nextRoute.walkingKm}km`],
-        ["保留节点", keptNodes(previousRoute, nextRoute)],
-      ],
-    };
-  }
-
-  if (type === "twoHours") {
-    const dinner = getDinner(nextRoute);
-    nextRoute.nodes = [clone(basePois.in77), clone(basePois.brokenBridge), clone(dinner)];
-    nextRoute.durationMinutes = 118;
-    nextRoute.budgetPerPerson = dinner.id === "nongtangli" ? 65 : 78;
-    nextRoute.walkingKm = 1.8;
-    nextRoute.waitRisk = dinner.id === "nongtangli" ? "低" : "中";
-    nextRoute.transportSummary = "压缩为两小时路线：只保留西湖核心景观点和晚餐收尾。";
-    nextRoute = recalculateRoute(nextRoute, "已压缩到约2小时，牺牲了咖啡休息和部分停留时间。");
-    diff = {
-      title: "只剩 2 小时",
-      action: "已压缩停留，只保留最关键的顺路节点。",
-      rows: [
-        ["总时长", `${formatDuration(previousRoute.durationMinutes)} → ${formatDuration(nextRoute.durationMinutes)}`],
-        ["调整方式", "删除或压缩中途停留，优先保证能走完"],
-        ["体验取舍", "路线更紧凑，休息时间减少"],
-        ["保留节点", keptNodes(previousRoute, nextRoute)],
-      ],
-    };
-  }
-
-  if (type === "photo") {
-    const hasPhoto = nextRoute.nodes.some((node) => node.id === "photoPoint");
-    if (!hasPhoto) {
-      const scenicIndex = nextRoute.nodes.findIndex((node) => node.id === "brokenBridge");
-      nextRoute.nodes.splice(scenicIndex + 1, 0, clone(alternativePois.photoPoint));
-    }
-    nextRoute = recalculateRoute(
-      nextRoute,
-      "已增加更适合拍照的湖景停留点，同时保留断桥这类高识别度节点。",
-    );
-    diff = {
-      title: "想更适合拍照",
-      action: "已增加一个更分散的湖景拍照点。",
-      rows: [
-        ["新增节点", "北山街湖景点"],
-        ["总时长", `${formatDuration(previousRoute.durationMinutes)} → ${formatDuration(nextRoute.durationMinutes)}`],
-        ["步行距离", `${previousRoute.walkingKm}km → ${nextRoute.walkingKm}km`],
-        ["保留节点", keptNodes(previousRoute, nextRoute)],
-      ],
-    };
-  }
+  const nextRoute = resolveRoute({
+    ...mockRouteData.routes.default,
+    ...adjustment.routePatch,
+    id: state.route.id,
+    label: state.route.label,
+    name: state.route.name,
+  });
 
   setState({
     previousRoute,
     route: nextRoute,
-    diff,
+    diff: clone(adjustment.diff),
     selectedNodeId: nextRoute.nodes[0]?.id,
     activeAdjustment: type,
+    drawerOpen: true,
     hint: nextRoute.hint || "",
   });
-}
-
-function getDinner(route) {
-  return route.nodes.find((node) => node.type === "dinner") || clone(basePois.xinbailu);
-}
-
-function keptNodes(previousRoute, nextRoute) {
-  const nextNames = new Set(nextRoute.nodes.map((node) => node.name));
-  return previousRoute.nodes
-    .filter((node) => nextNames.has(node.name))
-    .map((node) => node.name)
-    .join("、");
 }
 
 function moveNode(id, direction) {
@@ -527,21 +564,37 @@ function moveNode(id, direction) {
     showToast("这个节点已经在边界位置");
     return;
   }
+
   const [node] = nextRoute.nodes.splice(index, 1);
   nextRoute.nodes.splice(target, 0, node);
-  const recalculated = recalculateRoute(nextRoute, "已按你的顺序重算路线，时间和步行距离同步更新。");
+
+  nextRoute.transportSegments = nextRoute.nodes.slice(0, -1).map((current, segmentIndex) => {
+    const next = nextRoute.nodes[segmentIndex + 1];
+    return {
+      fromId: current.id,
+      toId: next.id,
+      from: current.name,
+      to: next.name,
+      method: "步行",
+      duration: "约12分钟",
+      arriveAt: next.arrive,
+    };
+  });
+
+  const recalculated = recalculateAfterManualChange(nextRoute, "已按你的顺序重算路线。");
   setState({
     previousRoute,
     route: recalculated,
     selectedNodeId: id,
+    drawerOpen: true,
     hint: recalculated.hint || "",
     diff: {
       title: "顺序已调整",
       action: "已重新计算总时长、步行距离和编号。",
       rows: [
-        ["路线顺序", recalculated.nodes.map((item) => item.name).join(" → ")],
-        ["总时长", `${formatDuration(previousRoute.durationMinutes)} → ${formatDuration(recalculated.durationMinutes)}`],
-        ["步行距离", `${previousRoute.walkingKm}km → ${recalculated.walkingKm}km`],
+        { label: "路线顺序", value: recalculated.nodes.map((item) => item.name).join(" → ") },
+        { label: "总时长", value: `${formatDuration(previousRoute.durationMinutes)} → ${formatDuration(recalculated.durationMinutes)}` },
+        { label: "步行距离", value: `${previousRoute.walkingKm}km → ${recalculated.walkingKm}km` },
       ],
     },
   });
@@ -556,22 +609,37 @@ function deleteNode(id) {
     showToast("起点需要保留，方便继续计算路线");
     return;
   }
+
   const nextRoute = clone(state.route);
   nextRoute.nodes = nextRoute.nodes.filter((node) => node.id !== id);
-  const recalculated = recalculateRoute(nextRoute, "已删除这个目的地，并同步更新后续路线。");
+  nextRoute.transportSegments = nextRoute.nodes.slice(0, -1).map((current, segmentIndex) => {
+    const next = nextRoute.nodes[segmentIndex + 1];
+    return {
+      fromId: current.id,
+      toId: next.id,
+      from: current.name,
+      to: next.name,
+      method: "步行",
+      duration: "约12分钟",
+      arriveAt: next.arrive,
+    };
+  });
+
+  const recalculated = recalculateAfterManualChange(nextRoute, "已删除这个目的地，并同步更新后续路线。");
   setState({
     previousRoute,
     route: recalculated,
     selectedNodeId: recalculated.nodes[0]?.id,
+    drawerOpen: true,
     hint: recalculated.hint || "",
     diff: {
       title: "已删除节点",
       action: "已移除相关目的地，并重算路线。",
       rows: [
-        ["删除节点", target.name],
-        ["总时长", `${formatDuration(previousRoute.durationMinutes)} → ${formatDuration(recalculated.durationMinutes)}`],
-        ["预计人均", `${previousRoute.budgetPerPerson}元 → ${recalculated.budgetPerPerson}元`],
-        ["保留节点", keptNodes(previousRoute, recalculated)],
+        { label: "删除节点", value: target.name },
+        { label: "总时长", value: `${formatDuration(previousRoute.durationMinutes)} → ${formatDuration(recalculated.durationMinutes)}` },
+        { label: "预计人均", value: `${previousRoute.budgetPerPerson}元 → ${recalculated.budgetPerPerson}元` },
+        { label: "保留节点", value: keptNodes(previousRoute, recalculated) },
       ],
     },
   });
@@ -581,34 +649,27 @@ function replaceNode(id) {
   if (!state.route) return;
   const target = state.route.nodes.find((node) => node.id === id);
   if (!target) return;
-  if (target.type === "dinner") {
-    applyAdjustment("restaurantBusy");
-    return;
-  }
-  if (target.type === "coffee") {
-    applyAdjustment("budget100");
-    return;
-  }
-  if (target.type === "scenic") {
-    applyAdjustment("photo");
-    return;
-  }
+  if (target.type === "dinner") return applyAdjustment("restaurantBusy");
+  if (target.type === "coffee") return applyAdjustment("budget100");
+  if (target.type === "scenic") return applyAdjustment("photo");
   showToast("这个节点建议保留为路线起点");
 }
 
 function acceptNewRoute() {
-  setState({ previousRoute: null, diff: null, activeAdjustment: null });
+  setState({ previousRoute: null, diff: null, activeAdjustment: null, drawerOpen: false });
   showToast("已采用新方案");
 }
 
 function restoreRoute() {
   if (!state.previousRoute) return;
+  const restored = state.previousRoute;
   setState({
-    route: state.previousRoute,
+    route: restored,
     previousRoute: null,
     diff: null,
     activeAdjustment: null,
-    selectedNodeId: state.previousRoute.nodes[0]?.id,
+    selectedNodeId: restored.nodes[0]?.id,
+    drawerOpen: false,
     hint: "",
   });
   showToast("已恢复原方案");
@@ -633,7 +694,6 @@ function renderInput() {
         <h1>说出你的出行目标，我帮你串成一条能直接走的路线。</h1>
         <p>不生成长攻略，只给你一条现在能走的路线；如果排队、预算或时间变了，可以只调整其中一站。</p>
       </div>
-
       <section class="panel">
         <div class="input-head">
           <strong>我理解你的需求是</strong>
@@ -641,31 +701,18 @@ function renderInput() {
         </div>
         <div class="mic-state">${state.micActive ? "语音输入演示中" : ""}</div>
         <textarea data-field="intent">${escapeHtml(state.inputText)}</textarea>
-
         <div class="section-label">试试这些需求</div>
         <div class="examples">
-          ${examples
-            .map(
-              (example) => `
-                <button class="example" data-action="useExample" data-value="${escapeHtml(example)}">${escapeHtml(example)}</button>
-              `,
-            )
+          ${mockRouteData.input.examples
+            .map((example) => `<button class="example" data-action="useExample" data-value="${escapeHtml(example)}">${escapeHtml(example)}</button>`)
             .join("")}
         </div>
-
         <div class="section-label">偏好</div>
         <div class="tag-row">
-          ${preferenceTags
-            .map(
-              (tag) => `
-                <button class="tag ${state.selectedPreferences.includes(tag) ? "selected" : ""}" data-action="togglePreference" data-value="${tag}">
-                  ${tag}
-                </button>
-              `,
-            )
+          ${mockRouteData.input.preferenceTags
+            .map((tag) => `<button class="tag ${state.selectedPreferences.includes(tag) ? "selected" : ""}" data-action="togglePreference" data-value="${tag}">${tag}</button>`)
             .join("")}
         </div>
-
         <button class="primary" data-action="generate">生成可执行路线</button>
       </section>
     </section>
@@ -678,21 +725,13 @@ function renderLoading() {
   return `
     <section class="loading-screen">
       <div class="loading-card panel">
-        <div class="pulse-route">
-          <span class="pulse-dot one"></span>
-          <span class="pulse-dot two"></span>
-        </div>
+        <div class="pulse-route"><span class="pulse-dot one"></span><span class="pulse-dot two"></span></div>
         <div class="loading-title">正在把需求串成路线</div>
         <div class="steps">
           ${steps
             .map((step, index) => {
               const status = state.loadingStep > index ? "done" : state.loadingStep === index ? "active" : "";
-              return `
-                <div class="step ${status}">
-                  <span class="step-dot">${state.loadingStep > index ? "✓" : index + 1}</span>
-                  <span>${step}</span>
-                </div>
-              `;
+              return `<div class="step ${status}"><span class="step-dot">${state.loadingStep > index ? "✓" : index + 1}</span><span>${step}</span></div>`;
             })
             .join("")}
         </div>
@@ -704,32 +743,18 @@ function renderLoading() {
 function renderResult() {
   const route = state.route;
   return `
-    <section class="screen result">
-      <div class="compact-top">
-        <div class="compact-title">
-          <h2>推荐你这样走</h2>
-          <span class="status-pill">现在出发</span>
-        </div>
-        <div class="chip-row">
-          ${route.constraints
-            .map(
-              (chip) => `
-                <button class="chip" data-action="chipTip">${chip.key}：${chip.value}</button>
-              `,
-            )
-            .join("")}
-        </div>
-      </div>
-
+    <section class="screen result task-screen tab-${state.activeTab}">
+      <div class="route-brief">${mockRouteData.constraints.summary}</div>
       ${renderSummary(route)}
-      ${renderTransport(route)}
-      ${renderMap(route)}
-      ${renderTimeline(route)}
-      ${renderPoiCards(route)}
-      ${renderAdjustmentPanel()}
-      ${state.diff ? renderDiffCard(state.diff) : ""}
-      <div class="hint ${state.hint ? "show" : ""}">${state.hint}</div>
-      <div class="footer-note">当前为黑客松演示版本，排队风险与体验标签由样例数据模拟。</div>
+      ${renderNextAction(route)}
+      ${renderTabs()}
+      <section class="tab-body">
+        ${state.activeTab === "route" ? renderRouteTab(route) : ""}
+        ${state.activeTab === "map" ? renderMap(route, "large") : ""}
+        ${state.activeTab === "places" ? renderPoiCards(route) : ""}
+      </section>
+      ${renderBottomBar(route)}
+      ${renderDrawer()}
     </section>
     ${renderToast()}
   `;
@@ -737,83 +762,99 @@ function renderResult() {
 
 function renderSummary(route) {
   return `
-    <section class="card summary-card">
-      <span class="summary-label">${route.label}</span>
-      <h2>${route.name}</h2>
-      <p>${route.explanation}</p>
-      <div class="metric-grid">
-        <div class="metric"><span>总时长</span><strong>${formatDuration(route.durationMinutes)}</strong></div>
-        <div class="metric"><span>预计人均</span><strong>${route.budgetPerPerson}元</strong></div>
-        <div class="metric"><span>步行距离</span><strong>${route.walkingKm}km</strong></div>
-        <div class="metric"><span>等待风险</span><strong>${route.waitRisk}</strong></div>
+    <section class="card summary-card task-summary">
+      <div>
+        <span class="summary-label">${route.label}</span>
+        <h2>${route.name}</h2>
+        <p>${route.explanation}</p>
       </div>
-      <div class="summary-actions">
-        <button class="primary" data-action="followRoute">按这条走</button>
-        <button class="secondary" data-action="scrollAdjust">调整路线</button>
+      <div class="task-metrics">
+        <div><strong>${formatDuration(route.durationMinutes)}</strong><span>总时长</span></div>
+        <div><strong>${route.budgetPerPerson}元</strong><span>人均</span></div>
+        <div><strong>${route.walkingKm}km</strong><span>步行</span></div>
+        <div><strong>${route.waitRisk}</strong><span>等待</span></div>
       </div>
     </section>
   `;
 }
 
-function renderTransport(route) {
+function renderNextAction(route) {
+  const { current, next, segment } = getNextAction(route);
   return `
-    <section class="card">
-      <div class="transport-head">
-        <h3>交通方案</h3>
-        <span class="summary-label">步行优先</span>
-      </div>
-      <p class="transport-note">${route.transportSummary}</p>
-      <div class="segments">
-        ${route.transportSegments
-          .map(
-            (segment) => `
-              <div class="segment">
-                <span class="walk-icon">步</span>
-                <div>
-                  <strong>${segment.from} → ${segment.to}</strong>
-                  <span>${segment.method}${segment.duration}</span>
-                </div>
-              </div>
-            `,
-          )
-          .join("")}
-      </div>
+    <section class="card next-card">
+      <span>下一步行动</span>
+      <h3>下一站：${next.name}</h3>
+      <p>从${current.shortName || current.name}${segment.method}${segment.duration}，预计${next.arrive}到达。</p>
     </section>
   `;
 }
 
-function renderMap(route) {
+function renderTabs() {
+  const tabs = [
+    ["route", "路线"],
+    ["map", "地图"],
+    ["places", "地点"],
+  ];
+  return `
+    <nav class="route-tabs" aria-label="路线视图切换">
+      ${tabs
+        .map(([id, label]) => `<button class="${state.activeTab === id ? "active" : ""}" data-action="switchTab" data-tab="${id}">${label}</button>`)
+        .join("")}
+    </nav>
+  `;
+}
+
+function renderRouteTab(route) {
+  return `
+    <div class="hint ${state.hint ? "show" : ""}">${state.hint}</div>
+    <section class="card transport-compact">
+      <button class="transport-toggle" data-action="toggleTransport">
+        <span>完整交通方案</span>
+        <strong>${state.transportOpen ? "收起" : "展开"}</strong>
+      </button>
+      ${state.transportOpen ? renderTransportList(route) : `<p>${route.transportSummary}</p>`}
+    </section>
+    ${renderTimeline(route)}
+  `;
+}
+
+function renderTransportList(route) {
+  return `
+    <div class="segments">
+      ${route.transportSegments
+        .map((segment) => `
+          <div class="segment">
+            <span class="walk-icon">步</span>
+            <div><strong>${segment.from} → ${segment.to}</strong><span>${segment.method}${segment.duration}</span></div>
+          </div>
+        `)
+        .join("")}
+    </div>
+  `;
+}
+
+function renderMap(route, mode) {
   const points = route.nodes.map((node) => `${node.map.x},${node.map.y}`).join(" ");
+  const activeNode = route.nodes.find((node) => node.id === state.selectedNodeId) || route.nodes[0];
   return `
-    <section class="card map-card">
-      <div class="section-head">
-        <h3>路线地图</h3>
-        <span class="summary-label">${route.nodes.length}站</span>
-      </div>
-      <div class="map" aria-label="路线地图">
+    <section class="card map-card ${mode === "preview" ? "map-preview-card" : "map-large-card"}">
+      ${mode === "large" ? `<div class="section-head"><h3>路线地图</h3><span class="summary-label">${route.nodes.length}站</span></div>` : ""}
+      <div class="map ${mode === "preview" ? "map-preview" : "map-large"}">
         <span class="lake-label">西湖水域</span>
         <span class="district-label">湖滨商圈</span>
-        <svg class="route-line" viewBox="0 0 100 100" preserveAspectRatio="none">
-          <polyline points="${points}"></polyline>
-        </svg>
+        <svg class="route-line" viewBox="0 0 100 100" preserveAspectRatio="none"><polyline points="${points}"></polyline></svg>
         ${route.nodes
-          .map(
-            (node, index) => `
-              <button
-                class="marker ${node.id === state.selectedNodeId ? "active" : ""}"
-                style="left:${node.map.x}%;top:${node.map.y}%"
-                data-action="selectNode"
-                data-id="${node.id}"
-                aria-label="${node.name}"
-              >${index + 1}</button>
-            `,
-          )
+          .map((node, index) => `
+            <button class="marker ${node.id === state.selectedNodeId ? "active" : ""}"
+              style="left:${node.map.x}%;top:${node.map.y}%"
+              data-action="selectNode"
+              data-id="${node.id}"
+              aria-label="${node.name}">${index + 1}</button>
+          `)
           .join("")}
+        ${mode === "large" ? `<div class="map-active-place"><strong>${activeNode.name}</strong><span>${typeText[activeNode.type]}｜${activeNode.arrive} 到达</span></div>` : ""}
       </div>
-      <div class="map-caption">
-        <span>点击编号查看对应安排</span>
-        <span>${route.nodes.find((node) => node.id === state.selectedNodeId)?.name || ""}</span>
-      </div>
+      ${mode === "large" ? `<div class="map-caption"><span>点击编号同步查看节点</span><span>${route.nodes.find((node) => node.id === state.selectedNodeId)?.name || ""}</span></div>` : ""}
     </section>
   `;
 }
@@ -821,30 +862,24 @@ function renderMap(route) {
 function renderTimeline(route) {
   return `
     <section class="card">
-      <div class="section-head">
-        <h3>今天怎么走</h3>
-        <span class="summary-label">行动指令</span>
-      </div>
-      <div class="timeline">
+      <div class="section-head"><h3>今天怎么走</h3><span class="summary-label">行动指令</span></div>
+      <div class="timeline compact-timeline">
         ${route.nodes
-          .map(
-            (node, index) => `
+          .map((node, index) => {
+            const expanded = state.expandedNodes.includes(node.id);
+            return `
               <article class="timeline-item ${node.id === state.selectedNodeId ? "active" : ""}" data-action="selectNode" data-id="${node.id}">
-                <div class="timebox">
-                  <strong>${node.arrive}</strong>
-                  <span>${node.leave} 离开</span>
-                  <div class="node-dot">${index + 1}</div>
-                </div>
+                <div class="timebox"><strong>${node.arrive}</strong><span>${node.leave} 离开</span><div class="node-dot">${index + 1}</div></div>
                 <div class="timeline-body">
                   <h4>${node.name}</h4>
                   <div class="type-line">${typeIcon[node.type]} · ${typeText[node.type]}</div>
-                  <p>${node.reason}</p>
-                  ${node.note ? `<div class="notice">${node.note}</div>` : ""}
-                  ${node.next ? `<div class="next-step">下一步：${node.next}</div>` : ""}
+                  ${node.next ? `<div class="next-step">下一段：${node.next}</div>` : `<div class="next-step">路线结束，湖滨商圈方便离开。</div>`}
+                  <button class="detail-toggle" data-action="toggleNodeDetail" data-id="${node.id}">${expanded ? "收起说明" : "查看理由"}</button>
+                  ${expanded ? `<p>${node.reason}</p>${node.note ? `<div class="notice">${node.note}</div>` : ""}` : ""}
                 </div>
               </article>
-            `,
-          )
+            `;
+          })
           .join("")}
       </div>
     </section>
@@ -854,94 +889,73 @@ function renderTimeline(route) {
 function renderPoiCards(route) {
   return `
     <section class="card">
-      <div class="section-head">
-        <h3>目的地</h3>
-        <span class="summary-label">可局部调整</span>
-      </div>
+      <div class="section-head"><h3>目的地</h3><span class="summary-label">可局部调整</span></div>
       <div class="poi-list">
         ${route.nodes
-          .map(
-            (node, index) => `
-              <article class="poi-card card ${node.id === state.selectedNodeId ? "active" : ""}" data-id="${node.id}">
-                <div class="poi-visual ${node.type}">
-                  <span class="poi-index">${index + 1}</span>
+          .map((node, index) => `
+            <article class="poi-card card ${node.id === state.selectedNodeId ? "active" : ""}" data-id="${node.id}">
+              <div class="poi-visual ${node.type}"><span class="poi-index">${index + 1}</span></div>
+              <div class="poi-content">
+                <div class="poi-meta"><span class="poi-type">${typeText[node.type]}</span><span class="poi-score">评分 ${node.rating}</span></div>
+                <h4>${node.name}</h4>
+                <p>${node.address}</p>
+                <div class="mini-grid"><div class="mini"><strong>开放时间</strong>${node.openHours}</div><div class="mini"><strong>价格</strong>${node.price}</div></div>
+                <div class="small-tags">${node.tags.map((tag) => `<span>${tag}</span>`).join("")}</div>
+                <p class="why">为什么推荐：${node.reason}</p>
+                <div class="poi-actions">
+                  <button class="small-btn primary-mini" data-action="replaceNode" data-id="${node.id}">替换</button>
+                  <button class="small-btn" data-action="deleteNode" data-id="${node.id}">删除</button>
+                  <button class="small-btn" data-action="moveNodeUp" data-id="${node.id}">上移</button>
+                  <button class="small-btn" data-action="moveNodeDown" data-id="${node.id}">下移</button>
                 </div>
-                <div class="poi-content">
-                  <div class="poi-meta">
-                    <span class="poi-type">${typeText[node.type]}</span>
-                    <span class="poi-score">评分 ${node.rating}</span>
-                  </div>
-                  <h4>${node.name}</h4>
-                  <p>${node.address}</p>
-                  <div class="mini-grid">
-                    <div class="mini"><strong>开放时间</strong>${node.openHours}</div>
-                    <div class="mini"><strong>价格</strong>${node.price}</div>
-                  </div>
-                  <div class="small-tags">
-                    ${node.tags.map((tag) => `<span>${tag}</span>`).join("")}
-                  </div>
-                  <p class="why">为什么推荐：${node.reason}</p>
-                  <div class="poi-actions">
-                    <button class="small-btn primary-mini" data-action="replaceNode" data-id="${node.id}">替换</button>
-                    <button class="small-btn" data-action="deleteNode" data-id="${node.id}">删除</button>
-                    <button class="small-btn" data-action="moveNodeUp" data-id="${node.id}">上移</button>
-                    <button class="small-btn" data-action="moveNodeDown" data-id="${node.id}">下移</button>
-                  </div>
-                </div>
-              </article>
-            `,
-          )
+              </div>
+            </article>
+          `)
           .join("")}
       </div>
     </section>
   `;
 }
 
-function renderAdjustmentPanel() {
-  const buttons = [
-    ["restaurantBusy", "餐厅排队太久"],
-    ["budget100", "预算降到 100"],
-    ["noCoffee", "不要咖啡"],
-    ["twoHours", "只剩 2 小时"],
-    ["photo", "想更适合拍照"],
-  ];
+function renderBottomBar(route) {
+  const { next, segment } = getNextAction(route);
   return `
-    <section class="card" id="adjustment-panel">
+    <div class="bottom-action-bar">
+      <div><span>下一站</span><strong>${next.name}｜${segment.method}${segment.duration.replace("约", "")}</strong></div>
+      <button class="secondary" data-action="openDrawer">调整</button>
+      <button class="primary" data-action="followRoute">出发</button>
+    </div>
+  `;
+}
+
+function renderDrawer() {
+  if (!state.drawerOpen) return "";
+  return `
+    <div class="drawer-backdrop" data-action="closeDrawer"></div>
+    <aside class="bottom-drawer" role="dialog" aria-label="调整路线">
+      <div class="drawer-handle"></div>
       <div class="section-head">
         <h3>现场变了，就局部调整</h3>
+        <button class="drawer-close" data-action="closeDrawer">关闭</button>
       </div>
-      <p class="transport-note">不重新生成攻略，只替换、删除或调整相关节点，并告诉你变化在哪里。</p>
-      <div class="quick-grid">
-        ${buttons
-          .map(
-            ([type, label]) => `
-              <button class="quick-btn ${state.activeAdjustment === type ? "active" : ""}" data-action="adjust" data-type="${type}">
-                ${label}
-              </button>
-            `,
-          )
+      <p class="transport-note">只替换、删除或调整相关节点，并告诉你变化在哪里。</p>
+      <div class="quick-grid drawer-grid">
+        ${mockRouteData.adjustmentButtons
+          .map((button) => `<button class="quick-btn ${state.activeAdjustment === button.type ? "active" : ""}" data-action="adjust" data-type="${button.type}">${button.label}</button>`)
           .join("")}
       </div>
-    </section>
+      ${state.diff ? renderDiffCard(state.diff) : ""}
+    </aside>
   `;
 }
 
 function renderDiffCard(diff) {
   return `
-    <section class="card diff-card">
+    <section class="diff-card drawer-diff">
       <h3>${diff.title}</h3>
       <p class="diff-subtitle">${diff.action}</p>
       <div class="diff-list">
-        ${diff.rows
-          .map(
-            ([label, value]) => `
-              <div class="diff-row">
-                <span>${label}</span>
-                <span>${value}</span>
-              </div>
-            `,
-          )
-          .join("")}
+        ${diff.rows.map((row) => `<div class="diff-row"><span>${row.label}</span><span>${row.value}</span></div>`).join("")}
       </div>
       <div class="diff-actions">
         <button class="primary" data-action="acceptRoute">采用新方案</button>
@@ -972,12 +986,8 @@ function handleAction(event) {
   const action = target.dataset.action;
   const id = target.dataset.id;
 
-  if (action === "toggleMic") {
-    setState({ micActive: !state.micActive });
-  }
-  if (action === "useExample") {
-    setState({ inputText: target.dataset.value || defaultInput });
-  }
+  if (action === "toggleMic") setState({ micActive: !state.micActive });
+  if (action === "useExample") setState({ inputText: target.dataset.value || mockRouteData.input.defaultText });
   if (action === "togglePreference") {
     const value = target.dataset.value;
     const exists = state.selectedPreferences.includes(value);
@@ -988,21 +998,29 @@ function handleAction(event) {
     });
   }
   if (action === "generate") startGeneration();
-  if (action === "chipTip") showToast("当前阶段先展示识别结果，稍后可直接编辑");
-  if (action === "followRoute") showToast("已进入路线执行视图");
-  if (action === "scrollAdjust") {
-    document.querySelector("#adjustment-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (action === "switchTab") setState({ activeTab: target.dataset.tab });
+  if (action === "toggleTransport") setState({ transportOpen: !state.transportOpen });
+  if (action === "toggleNodeDetail") {
+    event.stopPropagation();
+    const exists = state.expandedNodes.includes(id);
+    setState({
+      expandedNodes: exists
+        ? state.expandedNodes.filter((item) => item !== id)
+        : [...state.expandedNodes, id],
+    });
   }
   if (action === "selectNode") {
     setState({ selectedNodeId: id });
-    window.setTimeout(() => {
-      document.querySelector(`.poi-card[data-id="${id}"]`)?.scrollIntoView({
-        behavior: "smooth",
-        block: "nearest",
-      });
-    }, 40);
+    if (state.activeTab === "places") {
+      window.setTimeout(() => {
+        document.querySelector(`.poi-card[data-id="${id}"]`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }, 40);
+    }
   }
+  if (action === "openDrawer") setState({ drawerOpen: true });
+  if (action === "closeDrawer") setState({ drawerOpen: false });
   if (action === "adjust") applyAdjustment(target.dataset.type);
+  if (action === "followRoute") showToast("已进入路线执行视图");
   if (action === "moveNodeUp") moveNode(id, -1);
   if (action === "moveNodeDown") moveNode(id, 1);
   if (action === "deleteNode") deleteNode(id);
