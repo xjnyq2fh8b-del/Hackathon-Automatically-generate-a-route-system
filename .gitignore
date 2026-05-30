@@ -1,0 +1,11 @@
+node_modules/
+.next/
+dist/
+build/
+
+*.log
+*.mp4
+
+.env
+.env.*
+!.env.example
