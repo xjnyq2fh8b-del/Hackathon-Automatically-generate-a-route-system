@@ -1,5 +1,6 @@
 const app = document.querySelector("#app");
-const USE_BACKEND_API = false;
+const API_BASE_URL = "http://127.0.0.1:8000";
+const USE_BACKEND_API = true;
 
 const mockRouteData = {
   input: {
@@ -330,7 +331,7 @@ const mockRouteData = {
   },
 };
 
-const placeById = Object.fromEntries(mockRouteData.places.map((place) => [place.id, place]));
+let placeById = Object.fromEntries(mockRouteData.places.map((place) => [place.id, place]));
 const typeText = mockRouteData.labels.typeText;
 const typeIcon = mockRouteData.labels.typeIcon;
 
@@ -432,11 +433,88 @@ function adjustRouteLocal(adjustmentType, currentRoute, targetNodeId) {
 }
 
 async function generateRouteFromApi() {
-  return null;
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/route/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: state.inputText }),
+    });
+    const data = await readApiResponse(response);
+    return applyRouteData(data.routeData).route;
+  } catch (error) {
+    console.error(error);
+    return null;
+  }
 }
 
-async function adjustRouteFromApi() {
-  return null;
+async function adjustRouteFromApi(adjustmentType, currentRoute, targetNodeId) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/route/adjust`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        adjustmentType,
+        nodeId: targetNodeId,
+        route: routeToConfig(currentRoute),
+      }),
+    });
+    const data = await readApiResponse(response);
+    return {
+      ...applyRouteData(data.routeData),
+      targetNodeId,
+    };
+  } catch (error) {
+    console.error(error);
+    showToast("Backend API unavailable");
+    return null;
+  }
+}
+
+async function adjustRouteActionFromApi(action, currentRoute, targetNodeId) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/route/adjust`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action,
+        nodeId: targetNodeId,
+        route: routeToConfig(currentRoute),
+      }),
+    });
+    const data = await readApiResponse(response);
+    return {
+      ...applyRouteData(data.routeData),
+      targetNodeId,
+    };
+  } catch (error) {
+    console.error(error);
+    showToast("Backend API unavailable");
+    return null;
+  }
+}
+
+async function readApiResponse(response) {
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data?.message || data?.detail || `API request failed: ${response.status}`);
+  }
+  if (!data.routeData) {
+    throw new Error("API response is missing routeData");
+  }
+  return data;
+}
+
+function applyRouteData(routeData) {
+  if (!routeData?.route || !Array.isArray(routeData.places)) {
+    throw new Error("routeData is missing route or places");
+  }
+  placeById = Object.fromEntries(routeData.places.map((place) => [place.id, place]));
+  const route = resolveRoute(routeData.route);
+  route.hint = routeData.message || "";
+  return {
+    route,
+    diff: routeData.diff || null,
+  };
 }
 
 async function generateRouteData() {
@@ -597,8 +675,28 @@ async function applyAdjustment(type, targetNodeId) {
   });
 }
 
+async function applyNodeAction(action, targetNodeId) {
+  if (!state.route) return;
+  const previousRoute = clone(state.route);
+  const result = await adjustRouteActionFromApi(action, state.route, targetNodeId);
+  if (!result) return;
+
+  setState({
+    previousRoute,
+    route: result.route,
+    diff: result.diff,
+    selectedNodeId: action === "delete" ? result.route.nodes[0]?.id : targetNodeId,
+    activeAdjustment: null,
+    drawerOpen: true,
+    hint: result.route.hint || "",
+  });
+}
+
 function moveNode(id, direction) {
   if (!state.route) return;
+  if (USE_BACKEND_API) {
+    return applyNodeAction(direction < 0 ? "moveUp" : "moveDown", id);
+  }
   const previousRoute = clone(state.route);
   const nextRoute = clone(state.route);
   const index = nextRoute.nodes.findIndex((node) => node.id === id);
@@ -645,6 +743,9 @@ function moveNode(id, direction) {
 
 function deleteNode(id) {
   if (!state.route) return;
+  if (USE_BACKEND_API) {
+    return applyNodeAction("delete", id);
+  }
   const previousRoute = clone(state.route);
   const target = previousRoute.nodes.find((node) => node.id === id);
   if (!target) return;
@@ -690,6 +791,9 @@ function deleteNode(id) {
 
 function replaceNode(id) {
   if (!state.route) return;
+  if (USE_BACKEND_API) {
+    return applyNodeAction("replace", id);
+  }
   const target = state.route.nodes.find((node) => node.id === id);
   if (!target) return;
   if (target.type === "dinner") return applyAdjustment("restaurantBusy", id);
