@@ -8,7 +8,89 @@
 - 字段名使用英文 `camelCase`。
 - 路线接口统一返回 `{ "routeData": ... }`。
 - 第一版调整接口每次返回完整新 `route` 和 `diff`，不返回 `routePatch`。
-- `routeData` 主结构对齐前端样例：`constraints + places + route + adjustmentButtons + diff`。
+- `routeData` 顶层展示结构固定为 `constraints + places + route + diff`。
+- 后端内部算法字段不得直接出现在 `routeData.places` 或 `routeData.route` 中。
+
+## 前后端数据边界
+
+第一版先稳定接口结构，后端不能一边做算法一边随意改返回字段。前端只关心最终选中的路线，后端可以维护更丰富的候选池和评分字段，但返回前必须转换为展示结构。
+
+### 前端展示字段
+
+`routeData` 只包含以下四个顶层字段：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `constraints` | object | 用户约束摘要，用于页面展示系统理解到的出发地、时间、预算、偏好等 |
+| `places` | array | 本次路线展示所需地点列表，只放被前端渲染需要的字段 |
+| `route` | object | 当前推荐路线，包含顺序、时间轴、交通段和路线总指标 |
+| `diff` | object 或 null | 调整后的新旧方案对比；默认路线为 `null` |
+
+`places` 是展示层地点结构，允许字段为：
+
+```text
+id
+type
+name
+shortName
+address
+openHours
+rating
+price
+tags
+reason
+note
+map
+location
+```
+
+`route` 是展示层路线结构，允许字段为：
+
+```text
+id
+label
+name
+explanation
+durationMinutes
+budgetPerPerson
+walkingKm
+waitRisk
+placeIds
+timeline
+transportSummary
+transportSegments
+```
+
+`diff.rows` 固定为对象数组：
+
+```json
+[
+  { "label": "晚餐", "value": "新白鹿餐厅湖滨店 -> 弄堂里湖滨店" }
+]
+```
+
+### 后端内部算法字段
+
+以下字段属于后端内部候选池和评分逻辑，不得直接返回给前端：
+
+```text
+poiCatalog
+avgCost
+stayMinutes
+waitRisk
+crowdRisk
+photoScore
+quietScore
+restScore
+familyScore
+chatScore
+classicScore
+budgetScore
+walkFriendlyScore
+localFlavorScore
+```
+
+注意：`route.waitRisk` 是路线级展示摘要，可以保留；`poiCatalog.waitRisk` 是 POI 算法字段，不应透传到 `places`。
 
 ## GET /api/health
 
@@ -68,9 +150,7 @@
     "constraints": {},
     "places": [],
     "route": {},
-    "adjustmentButtons": [],
-    "diff": null,
-    "message": ""
+    "diff": null
   }
 }
 ```
@@ -139,15 +219,13 @@
       "transportSummary": "",
       "transportSegments": []
     },
-    "adjustmentButtons": [],
     "diff": {
       "title": "已删除咖啡点",
       "action": "中途少一次停留，直接从景点前往晚餐。",
       "rows": [
         { "label": "删除节点", "value": "湖畔白塔咖啡" }
       ]
-    },
-    "message": ""
+    }
   }
 }
 ```

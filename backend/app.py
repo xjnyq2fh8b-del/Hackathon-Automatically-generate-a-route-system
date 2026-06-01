@@ -144,13 +144,21 @@ PLACES = [
 
 PLACE_BY_ID = {place["id"]: place for place in PLACES}
 
-ADJUSTMENT_BUTTONS = [
-    {"type": "restaurantBusy", "label": "餐厅排队太久"},
-    {"type": "budget100", "label": "预算降到100"},
-    {"type": "noCoffee", "label": "不要咖啡"},
-    {"type": "twoHours", "label": "只剩2小时"},
-    {"type": "photo", "label": "想更适合拍照"},
-]
+FRONTEND_PLACE_FIELDS = {
+    "id",
+    "type",
+    "name",
+    "shortName",
+    "address",
+    "openHours",
+    "rating",
+    "price",
+    "tags",
+    "reason",
+    "note",
+    "map",
+    "location",
+}
 
 
 DEFAULT_ROUTE = {
@@ -347,15 +355,20 @@ LEGACY_ADJUSTMENT_ALIASES = {
 NATURAL_ORDER = ["in77", "brokenBridge", "photoPoint", "baitacoffee", "convenienceRest", "xinbailu", "nongtangli"]
 
 
-def _route_data(route: dict | None = None, diff: dict | None = None, message: str = "") -> dict:
+def _route_data(route: dict | None = None, diff: dict | None = None) -> dict:
     return {
         "constraints": deepcopy(CONSTRAINTS),
-        "places": deepcopy(PLACES),
+        "places": _frontend_places(PLACES),
         "route": deepcopy(route or DEFAULT_ROUTE),
-        "adjustmentButtons": deepcopy(ADJUSTMENT_BUTTONS),
         "diff": deepcopy(diff),
-        "message": message,
     }
+
+
+def _frontend_places(pois: list[dict]) -> list[dict]:
+    return [
+        {key: deepcopy(value) for key, value in poi.items() if key in FRONTEND_PLACE_FIELDS}
+        for poi in pois
+    ]
 
 
 def _route_from_patch(patch: dict) -> dict:
@@ -526,4 +539,4 @@ def adjust_route(request: AdjustRequest) -> dict:
 
 @app.get("/api/pois")
 def list_pois() -> dict:
-    return {"places": deepcopy(PLACES)}
+    return {"places": _frontend_places(PLACES)}
