@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from backend.poi_catalog import load_poi_catalog_or_fallback, to_frontend_places
+from backend.route_planner import RoutePlannerError, generate_adjusted_route, generate_default_route
 
 
 app = FastAPI(title="Westlake Route Agent Mock API")
@@ -356,6 +357,33 @@ def _route_data(route: dict | None = None, diff: dict | None = None) -> dict:
     }
 
 
+def _catalog_route_data(planned: dict) -> dict:
+    return {
+        "constraints": deepcopy(CONSTRAINTS),
+        "places": deepcopy(planned["places"]),
+        "route": deepcopy(planned["route"]),
+        "diff": deepcopy(planned.get("diff")),
+    }
+
+
+def _try_catalog_default_route() -> dict | None:
+    if not POI_CATALOG_LOADED:
+        return None
+    try:
+        return _catalog_route_data(generate_default_route(POI_CATALOG))
+    except (RoutePlannerError, KeyError, TypeError, ValueError):
+        return None
+
+
+def _try_catalog_adjusted_route(adjustment_type: str) -> dict | None:
+    if not POI_CATALOG_LOADED:
+        return None
+    try:
+        return _catalog_route_data(generate_adjusted_route(adjustment_type, POI_CATALOG))
+    except (RoutePlannerError, KeyError, TypeError, ValueError):
+        return None
+
+
 def _places_for_route(route: dict) -> list[dict]:
     route_place_ids = set(route.get("placeIds", []))
     catalog_place_ids = {place.get("id") for place in POI_CATALOG}
@@ -499,6 +527,9 @@ def parse_text(_: TextRequest) -> dict:
 
 @app.post("/api/route/generate")
 def generate_route(_: TextRequest) -> dict:
+    catalog_route_data = _try_catalog_default_route()
+    if catalog_route_data:
+        return {"routeData": catalog_route_data}
     return {"routeData": _route_data(diff=None)}
 
 
@@ -508,6 +539,9 @@ def adjust_route(request: AdjustRequest) -> dict:
     adjustment_type = LEGACY_ADJUSTMENT_ALIASES.get(adjustment_type, adjustment_type)
 
     if adjustment_type in ADJUSTMENTS:
+        catalog_route_data = _try_catalog_adjusted_route(adjustment_type)
+        if catalog_route_data:
+            return {"routeData": catalog_route_data}
         route, diff = _shortcut_adjustment(adjustment_type)
         return {"routeData": _route_data(route=route, diff=diff)}
 
