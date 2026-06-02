@@ -527,18 +527,26 @@ def parse_text(request: TextRequest) -> dict:
     return {"constraints": deepcopy(CONSTRAINTS)}
 
 
-@app.post("/api/route/generate")
-def generate_route(request: TextRequest) -> dict:
-    parse_intent(request.text)
+def _default_route_response() -> dict:
     catalog_route_data = _try_catalog_default_route()
     if catalog_route_data:
         return {"routeData": catalog_route_data}
     return {"routeData": _route_data(diff=None)}
 
 
+@app.post("/api/route/generate")
+def generate_route(request: TextRequest) -> dict:
+    parse_intent(request.text)
+    return _default_route_response()
+
+
 @app.post("/api/chat-route")
 def chat_route(request: TextRequest) -> dict:
-    return generate_route(request)
+    intent = parse_intent(request.text)
+    adjustment_type = intent.get("adjustmentType") if intent.get("intent") == "adjustRoute" else None
+    if adjustment_type in ADJUSTMENTS:
+        return adjust_route(AdjustRequest(adjustmentType=adjustment_type))
+    return _default_route_response()
 
 
 @app.post("/api/route/adjust")
