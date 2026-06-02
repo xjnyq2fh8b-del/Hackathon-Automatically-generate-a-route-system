@@ -5,6 +5,7 @@ import json
 import re
 from collections import Counter
 from copy import deepcopy
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -63,6 +64,15 @@ FRONTEND_PLACE_FIELDS = {
 }
 
 TIME_PATTERN = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+SIMPLE_HOURS_PATTERN = re.compile(r"^\s*((?:[01]\d|2[0-3]):[0-5]\d)\s*-\s*((?:[01]\d|2[0-3]):[0-5]\d)\s*$")
+ALWAYS_OPEN_PATTERN = re.compile(r"(24\s*小时|全天)")
+ALL_DAYS = [0, 1, 2, 3, 4, 5, 6]
+
+
+@dataclass
+class CatalogValidation:
+    errors: list[str]
+    warnings: list[str]
 
 
 class PoiCatalogError(ValueError):
@@ -72,9 +82,9 @@ class PoiCatalogError(ValueError):
 def load_poi_catalog(path: Path) -> list[dict[str, Any]]:
     with path.open("r", encoding="utf-8") as file:
         data = json.load(file)
-    errors = validate_poi_catalog(data)
-    if errors:
-        raise PoiCatalogError("\n".join(errors))
+    result = validate_poi_catalog_with_warnings(data)
+    if result.errors:
+        raise PoiCatalogError("\n".join(result.errors))
     return data
 
 
@@ -86,9 +96,14 @@ def load_poi_catalog_or_fallback(path: Path, fallback_places: list[dict[str, Any
 
 
 def validate_poi_catalog(data: Any) -> list[str]:
+    return validate_poi_catalog_with_warnings(data).errors
+
+
+def validate_poi_catalog_with_warnings(data: Any) -> CatalogValidation:
     errors: list[str] = []
+    warnings: list[str] = []
     if not isinstance(data, list):
-        return ["poiCatalog must be a JSON array."]
+        return CatalogValidation(["poiCatalog must be a JSON array."], [])
 
     ids: list[str] = []
     type_counter: Counter[str] = Counter()
@@ -130,22 +145,22 @@ def validate_poi_catalog(data: Any) -> list[str]:
 
         _validate_location(poi, label, errors)
         _validate_tags(poi, label, errors)
-        _validate_opening_hours(poi, label, errors)
+        _validate_opening_hours(poi, label, errors, warnings)
 
     duplicate_ids = sorted({poi_id for poi_id in ids if ids.count(poi_id) > 1})
     for poi_id in duplicate_ids:
         errors.append(f"id `{poi_id}` is duplicated.")
 
-    _validate_type_counts(type_counter, errors)
-    return errors
+    _validate_candidate_counts(data, type_counter, errors)
+    return CatalogValidation(errors, warnings)
 
 
-def csv_to_catalog(csv_path: Path) -> tuple[list[dict[str, Any]], list[str]]:
+def csv_to_catalog(csv_path: Path) -> tuple[list[dict[str, Any]], CatalogValidation]:
     with csv_path.open("r", encoding="utf-8-sig", newline="") as file:
         rows = list(csv.DictReader(file))
 
     catalog = [_row_to_poi(row, index) for index, row in enumerate(rows)]
-    return catalog, validate_poi_catalog(catalog)
+    return catalog, validate_poi_catalog_with_warnings(catalog)
 
 
 def write_catalog_json(catalog: list[dict[str, Any]], output_path: Path) -> None:
@@ -197,9 +212,72 @@ def is_open_at(poi: dict[str, Any], day: int, time_text: str) -> bool | None:
     return False
 
 
+def get_pois_by_type(pois: list[dict[str, Any]], poi_type: str) -> list[dict[str, Any]]:
+    return [poi for poi in pois if poi.get("type") == poi_type]
+
+
+def get_buffer_candidates(pois: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        poi
+        for poi in pois
+        if poi.get("type") in {"coffee", "rest", "snack", "mall"}
+        or _score_at_least(poi, "restScore", 4)
+        or "rest-friendly" in poi.get("experienceTags", [])
+    ]
+
+
+def get_non_coffee_buffer_candidates(pois: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        poi
+        for poi in get_buffer_candidates(pois)
+        if poi.get("type") != "coffee"
+    ]
+
+
+def get_dinner_candidates(pois: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return get_pois_by_type(pois, "dinner")
+
+
+def get_scenic_candidates(pois: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return get_pois_by_type(pois, "scenic")
+
+
+def get_photo_candidates(pois: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return get_pois_by_type(pois, "photo")
+
+
+def calculate_route_budget(route_nodes: list[dict[str, Any]], poi_catalog: list[dict[str, Any]]) -> int | float:
+    poi_by_id = {poi["id"]: poi for poi in poi_catalog if "id" in poi}
+    total: int | float = 0
+    for node in route_nodes:
+        poi = poi_by_id.get(node.get("placeId") or node.get("id"), {})
+        role = node.get("role")
+        node_type = node.get("type") or poi.get("type")
+        if not _should_include_cost(role, node_type, node, poi):
+            continue
+        avg_cost = poi.get("avgCost", 0)
+        if _is_number(avg_cost):
+            total += avg_cost
+    return total
+
+
+# Compatibility aliases for task wording and quick scripts.
+loadPoiCatalog = load_poi_catalog_or_fallback
+getPoisByType = get_pois_by_type
+getBufferCandidates = get_buffer_candidates
+getNonCoffeeBufferCandidates = get_non_coffee_buffer_candidates
+getDinnerCandidates = get_dinner_candidates
+getScenicCandidates = get_scenic_candidates
+getPhotoCandidates = get_photo_candidates
+calculateRouteBudget = calculate_route_budget
+
+
 def _row_to_poi(row: dict[str, str], index: int) -> dict[str, Any]:
     lng = _to_number(row.get("location.lng"))
     lat = _to_number(row.get("location.lat"))
+    open_hours_text = _clean(row.get("openHoursText")) or _clean(row.get("openHours"))
+    opening_hours = _opening_hours_from_row(row, open_hours_text, index)
+    confidence = _clean(row.get("openHoursConfidence")) or "medium"
     return {
         "id": _clean(row.get("id")),
         "amapId": _clean(row.get("amapId")),
@@ -207,9 +285,9 @@ def _row_to_poi(row: dict[str, str], index: int) -> dict[str, Any]:
         "type": _clean(row.get("type")),
         "address": _clean(row.get("address")),
         "location": {"lng": lng, "lat": lat},
-        "openHoursText": _clean(row.get("openHoursText")),
-        "openingHours": _parse_json_array(row.get("openingHours"), f"row {index + 1} openingHours"),
-        "openHoursConfidence": _clean(row.get("openHoursConfidence")) or "unknown",
+        "openHoursText": open_hours_text,
+        "openingHours": opening_hours,
+        "openHoursConfidence": confidence,
         "avgCost": _to_number(row.get("avgCost")),
         "rating": _to_number(row.get("rating")),
         "source": _clean(row.get("source")),
@@ -251,7 +329,7 @@ def _validate_tags(poi: dict[str, Any], label: str, errors: list[str]) -> None:
             errors.append(f"{label}: `{field}` must contain non-empty strings.")
 
 
-def _validate_opening_hours(poi: dict[str, Any], label: str, errors: list[str]) -> None:
+def _validate_opening_hours(poi: dict[str, Any], label: str, errors: list[str], warnings: list[str]) -> None:
     confidence = poi.get("openHoursConfidence")
     if confidence not in ALLOWED_OPEN_HOURS_CONFIDENCE:
         errors.append(f"{label}: `openHoursConfidence` must be one of {sorted(ALLOWED_OPEN_HOURS_CONFIDENCE)}.")
@@ -261,8 +339,10 @@ def _validate_opening_hours(poi: dict[str, Any], label: str, errors: list[str]) 
         errors.append(f"{label}: `openingHours` must be an array.")
         return
 
-    if not opening_hours and confidence not in {"unknown", "low"}:
-        errors.append(f"{label}: empty `openingHours` requires `openHoursConfidence` to be `unknown` or `low`.")
+    if not opening_hours:
+        text = poi.get("openHoursText", "")
+        suffix = f" from `{text}`" if text else ""
+        warnings.append(f"{label}: `openingHours` is empty{suffix}; backend cannot judge open status yet.")
 
     for group_index, group in enumerate(opening_hours):
         group_label = f"{label}.openingHours[{group_index}]"
@@ -310,16 +390,99 @@ def _validate_period(period: Any, label: str, errors: list[str]) -> None:
         errors.append(f"{label}: `close` must be later than `open` when `crossDay` is false.")
 
 
-def _validate_type_counts(type_counter: Counter[str], errors: list[str]) -> None:
+def _validate_candidate_counts(data: list[Any], type_counter: Counter[str], errors: list[str]) -> None:
     required = {
         "scenic": type_counter["scenic"],
+        "photo": type_counter["photo"],
         "coffee": type_counter["coffee"],
         "dinner": type_counter["dinner"],
-        "rest/snack/mall": type_counter["rest"] + type_counter["snack"] + type_counter["mall"],
+        "bufferCandidates": len(get_buffer_candidates([poi for poi in data if isinstance(poi, dict)])),
+        "nonCoffeeBufferCandidates": len(get_non_coffee_buffer_candidates([poi for poi in data if isinstance(poi, dict)])),
+    }
+    minimums = {
+        "scenic": 3,
+        "photo": 3,
+        "coffee": 3,
+        "dinner": 3,
+        "bufferCandidates": 6,
+        "nonCoffeeBufferCandidates": 3,
     }
     for group, count in required.items():
-        if count < 3:
-            errors.append(f"type group `{group}` needs at least 3 candidates, got {count}.")
+        minimum = minimums[group]
+        if count < minimum:
+            errors.append(f"type group `{group}` needs at least {minimum} candidates, got {count}.")
+
+
+def _opening_hours_from_row(row: dict[str, str], open_hours_text: str, index: int) -> list[Any]:
+    opening_hours_text = _clean(row.get("openingHours"))
+    if opening_hours_text:
+        parsed = _parse_json_array(opening_hours_text, f"row {index + 1} openingHours")
+        if parsed:
+            return parsed
+    return parse_opening_hours_text(open_hours_text)
+
+
+def parse_opening_hours_text(open_hours_text: str) -> list[dict[str, Any]]:
+    text = open_hours_text.strip()
+    if not text:
+        return []
+    if ALWAYS_OPEN_PATTERN.search(text):
+        return [
+            {
+                "days": ALL_DAYS,
+                "periods": [{"open": "00:00", "close": "23:59", "crossDay": False}],
+            }
+        ]
+    match = SIMPLE_HOURS_PATTERN.match(text)
+    if not match:
+        return []
+    open_time, close_time = match.groups()
+    cross_day = _minutes(close_time) <= _minutes(open_time)
+    return [
+        {
+            "days": ALL_DAYS,
+            "periods": [{"open": open_time, "close": close_time, "crossDay": cross_day}],
+        }
+    ]
+
+
+def _score_at_least(poi: dict[str, Any], field: str, minimum: int) -> bool:
+    value = poi.get(field)
+    return _is_number(value) and value >= minimum
+
+
+def _should_include_cost(role: Any, node_type: Any, node: dict[str, Any], poi: dict[str, Any]) -> bool:
+    if role == "start" or node_type == "start":
+        return False
+    if node.get("costIncludedByDefault") is True or poi.get("costIncludedByDefault") is True:
+        return True
+    if node_type in {"scenic", "photo", "mall", "rest"}:
+        return False
+    return node_type in {"coffee", "dinner", "snack"}
+
+
+def catalog_summary(pois: list[dict[str, Any]]) -> dict[str, Any]:
+    type_counts = Counter(poi.get("type") for poi in pois)
+    validation = validate_poi_catalog_with_warnings(pois)
+    return {
+        "total": len(pois),
+        "typeCounts": dict(sorted(type_counts.items())),
+        "bufferCandidates": len(get_buffer_candidates(pois)),
+        "nonCoffeeBufferCandidates": len(get_non_coffee_buffer_candidates(pois)),
+        "errors": len(validation.errors),
+        "warnings": len(validation.warnings),
+    }
+
+
+def format_validation_report(result: CatalogValidation) -> str:
+    lines: list[str] = []
+    if result.errors:
+        lines.append("Errors:")
+        lines.extend(f"- {error}" for error in result.errors)
+    if result.warnings:
+        lines.append("Warnings:")
+        lines.extend(f"- {warning}" for warning in result.warnings)
+    return "\n".join(lines)
 
 
 def _poi_label(poi: Any, index: int) -> str:

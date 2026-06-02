@@ -43,7 +43,7 @@
 | `walkFriendlyScore` | integer | 是 | 少走路友好度，1-5 |
 | `note` | string | 否 | 数据缺口、人工复核说明或规则备注 |
 
-## 类型数量要求
+## 类型与候选池数量要求
 
 当前样例共 25 个 POI：
 
@@ -56,6 +56,34 @@
 | `dinner` | 6 | 餐饮替换 |
 | `mall` / `rest` / `snack` | 6 | 低预算、不要咖啡、时间压缩时兜底 |
 
+校验口径：
+
+1. `scenic` 至少 3 个。
+2. `photo` 至少 3 个。
+3. `coffee` 至少 3 个。
+4. `dinner` 至少 3 个。
+5. `bufferCandidates` 至少 6 个。
+6. `nonCoffeeBufferCandidates` 至少 3 个。
+
+`type=rest` 表示 POI 地点类型是轻休息点，和 `scenic`、`coffee`、`dinner` 同级；不要新增独立 `rest` 字段，也不要要求 `type=rest` 至少 3 个。
+
+`restScore` 表示可休息程度，`coffee`、`mall`、`snack`、`scenic` 等类型也可以有较高 `restScore`。`restScore` 是后端算法字段，不直接返回给前端。
+
+`bufferCandidates` 定义：
+
+```text
+type in ["coffee", "rest", "snack", "mall"]
+或 restScore >= 4
+或 experienceTags 包含 "rest-friendly"
+```
+
+`nonCoffeeBufferCandidates` 定义：
+
+```text
+属于 bufferCandidates
+且 type != "coffee"
+```
+
 ## CSV 填写规则
 
 - `tags` 和 `experienceTags` 在 CSV 中用英文逗号分隔，例如 `"湖景,拍照,低预算"`。
@@ -63,7 +91,10 @@
 - `openingHours` 在 CSV 中填写 JSON 数组字符串，例如 `"[{""days"":[1,2,3,4,5],""periods"":[{""open"":""10:00"",""close"":""22:00"",""crossDay"":false}]}]"`。
 - 所有 score 字段必须是 1-5 的整数。
 - 不确定的真实数据不要猜，优先写 `0` 或在 `note` 中标注“待人工补充”。
-- 不要为了通过校验去推断真实营业时间；如果没有人工确认，保留 `openHoursText`，将 `openingHours` 填 `[]`，`openHoursConfidence` 填 `unknown` 或 `low`。
+- CSV 可以保留旧字段 `openHours`，转换脚本会原样迁移为 `openHoursText`。
+- 简单 `HH:mm-HH:mm` 和 `24小时营业` 可以自动转换为 `openingHours`。
+- 工作日 / 周末不同、多时段、节假日、异常跨日文本如果无法可靠解析，不要猜；转换脚本会保留 `openHoursText`，`openingHours` 为空数组，并输出 warning。
+- `openHoursConfidence` 默认 `medium`；如果人工确认不可靠，可改成 `low` 或 `unknown`。
 
 ## 营业时间结构
 
@@ -99,5 +130,16 @@
 3. `open` 和 `close` 必须是 `HH:mm` 格式。
 4. `crossDay=true` 表示跨日营业，例如 `18:00-02:00`。
 5. `crossDay=false` 时，`close` 必须晚于 `open`。
-6. `openHoursConfidence=unknown` 时，允许 `openingHours` 为空数组。
+6. `openingHours` 为空数组时，校验会输出 warning，但不会阻止 JSON 生成。
 7. 全天开放可以用 `00:00-23:59` 表示，并在 `note` 中说明，或后续增加 `openType=always_open`。
+
+## 预算计算规则
+
+预算计算不能直接累加所有 POI 的 `avgCost`，必须结合 route node 的 `role` / `type` 判断：
+
+1. `role=start` 或 `type=start` 不计入预算。
+2. `scenic`、`photo` 默认不计入预算。
+3. `coffee`、`dinner`、`snack` 默认计入预算。
+4. `mall`、`rest` 默认不计入预算，除非节点或 POI 显式设置 `costIncludedByDefault=true`。
+5. 如果同一个地点未来既可以作为起点，也可以作为消费点，优先通过 route node `role` 判断，不修改 POI 本身。
+6. V1 中 `start` 类型只作为出发锚点，不参与预算累加。

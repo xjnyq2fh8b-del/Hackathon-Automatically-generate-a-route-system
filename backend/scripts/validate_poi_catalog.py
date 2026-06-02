@@ -8,29 +8,36 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from backend.poi_catalog import validate_poi_catalog
+from backend.poi_catalog import csv_to_catalog, validate_poi_catalog_with_warnings
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate poiCatalog JSON data.")
+    parser = argparse.ArgumentParser(description="Validate poiCatalog CSV or JSON data.")
     parser.add_argument("path", nargs="?", default=str(ROOT / "data" / "poiCatalog.sample.json"))
     args = parser.parse_args()
 
     path = Path(args.path)
     try:
-        with path.open("r", encoding="utf-8") as file:
-            data = json.load(file)
-    except (OSError, json.JSONDecodeError) as error:
+        if path.suffix.lower() == ".csv":
+            _, result = csv_to_catalog(path)
+        else:
+            with path.open("r", encoding="utf-8") as file:
+                data = json.load(file)
+            result = validate_poi_catalog_with_warnings(data)
+    except (OSError, json.JSONDecodeError, ValueError) as error:
         print(f"poiCatalog validation failed: {error}")
         return 1
 
-    errors = validate_poi_catalog(data)
-    if errors:
+    if result.errors:
         print("poiCatalog validation failed:")
-        for error in errors:
+        for error in result.errors:
             print(f"- {error}")
         return 1
 
+    if result.warnings:
+        print("poiCatalog validation warnings:")
+        for warning in result.warnings:
+            print(f"- {warning}")
     print(f"poiCatalog validation passed: {path}")
     return 0
 

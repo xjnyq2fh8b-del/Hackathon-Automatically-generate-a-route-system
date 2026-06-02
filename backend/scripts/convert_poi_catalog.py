@@ -17,17 +17,21 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
-        catalog, errors = csv_to_catalog(Path(args.csv_path))
+        catalog, result = csv_to_catalog(Path(args.csv_path))
     except (OSError, ValueError, PoiCatalogError) as error:
         print(f"poiCatalog conversion failed: {error}")
         return 1
 
-    if errors:
+    if result.errors:
         print("poiCatalog conversion failed; JSON was not generated:")
-        for error in errors:
+        for error in result.errors:
             print(f"- {error}")
         return 1
 
+    if result.warnings:
+        print("poiCatalog conversion warnings:")
+        for warning in result.warnings:
+            print(f"- {warning}")
     write_catalog_json(catalog, Path(args.json_path))
     print(f"poiCatalog JSON generated: {args.json_path}")
     return 0
