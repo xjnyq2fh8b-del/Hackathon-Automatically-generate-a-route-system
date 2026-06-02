@@ -1,0 +1,1002 @@
+[
+  {
+    "id": "start_in77_hubin",
+    "amapId": "B0FFIMEKW0",
+    "name": "杭州湖滨in77",
+    "type": "start",
+    "address": "延安路258号(龙翔桥地铁站C口步行200米)",
+    "location": {
+      "lng": 120.163749,
+      "lat": 30.25283
+    },
+    "openHoursText": "10:00-22:00",
+    "openingHours": [],
+    "openHoursConfidence": "unknown",
+    "avgCost": 150,
+    "rating": 4.9,
+    "source": "amap",
+    "tags": [
+      "集合方便",
+      "商场补给",
+      "地铁近"
+    ],
+    "experienceTags": [
+      "start",
+      "mall",
+      "transit-friendly"
+    ],
+    "stayMinutes": 5,
+    "waitRisk": "medium",
+    "crowdRisk": "medium",
+    "photoScore": 3,
+    "quietScore": 2,
+    "restScore": 4,
+    "familyScore": 4,
+    "chatScore": 3,
+    "classicScore": 3,
+    "localFlavorScore": 3,
+    "budgetScore": 3,
+    "walkFriendlyScore": 5,
+    "note": ""
+  },
+  {
+    "id": "scenic_broken_bridge",
+    "amapId": "B023B01EE6",
+    "name": "杭州西湖风景名胜区-断桥残雪",
+    "type": "scenic",
+    "address": "龙井路1号杭州西湖风景名胜区内(东北角)",
+    "location": {
+      "lng": 120.151347,
+      "lat": 30.258151
+    },
+    "openHoursText": "24小时营业",
+    "openingHours": [],
+    "openHoursConfidence": "unknown",
+    "avgCost": 0,
+    "rating": 4.9,
+    "source": "amap",
+    "tags": [
+      "西湖经典",
+      "断桥",
+      "核心景点"
+    ],
+    "experienceTags": [
+      "classic",
+      "lake-view",
+      "scenic"
+    ],
+    "stayMinutes": 35,
+    "waitRisk": "low",
+    "crowdRisk": "high",
+    "photoScore": 5,
+    "quietScore": 2,
+    "restScore": 2,
+    "familyScore": 3,
+    "chatScore": 2,
+    "classicScore": 5,
+    "localFlavorScore": 5,
+    "budgetScore": 5,
+    "walkFriendlyScore": 3,
+    "note": ""
+  },
+  {
+    "id": "scenic_baidi",
+    "amapId": "B0FFFTYEG4",
+    "name": "杭州西湖风景名胜区-白堤",
+    "type": "scenic",
+    "address": "西湖街道龙井路1号杭州西湖风景名胜区内(东北角)",
+    "location": {
+      "lng": 120.149189,
+      "lat": 30.255701
+    },
+    "openHoursText": "24小时营业",
+    "openingHours": [],
+    "openHoursConfidence": "unknown",
+    "avgCost": 0,
+    "rating": 4.7,
+    "source": "amap",
+    "tags": [
+      "西湖经典",
+      "步行友好",
+      "湖景"
+    ],
+    "experienceTags": [
+      "classic",
+      "lake-view",
+      "walk"
+    ],
+    "stayMinutes": 35,
+    "waitRisk": "low",
+    "crowdRisk": "high",
+    "photoScore": 5,
+    "quietScore": 3,
+    "restScore": 2,
+    "familyScore": 3,
+    "chatScore": 2,
+    "classicScore": 5,
+    "localFlavorScore": 5,
+    "budgetScore": 5,
+    "walkFriendlyScore": 3,
+    "note": ""
+  },
+  {
+    "id": "scenic_hubin_qingyu",
+    "amapId": "B023B0BIH2",
+    "name": "杭州西湖风景名胜区-湖滨晴雨",
+    "type": "scenic",
+    "address": "湖滨路(龙翔桥地铁站C口步行320米)",
+    "location": {
+      "lng": 120.16176,
+      "lat": 30.253182
+    },
+    "openHoursText": "24小时营业",
+    "openingHours": [],
+    "openHoursConfidence": "unknown",
+    "avgCost": 0,
+    "rating": 4.5,
+    "source": "amap",
+    "tags": [
+      "湖滨湖景",
+      "近地铁",
+      "轻游览"
+    ],
+    "experienceTags": [
+      "lake-view",
+      "scenic",
+      "near-metro"
+    ],
+    "stayMinutes": 25,
+    "waitRisk": "low",
+    "crowdRisk": "high",
+    "photoScore": 4,
+    "quietScore": 3,
+    "restScore": 3,
+    "familyScore": 4,
+    "chatScore": 2,
+    "classicScore": 4,
+    "localFlavorScore": 4,
+    "budgetScore": 5,
+    "walkFriendlyScore": 4,
+    "note": ""
+  },
+  {
+    "id": "scenic_hubin_park",
+    "amapId": "B023B05MLT",
+    "name": "杭州西湖风景名胜区-湖滨公园",
+    "type": "scenic",
+    "address": "龙井路1号杭州西湖风景名胜区内(东北角)",
+    "location": {
+      "lng": 120.158818,
+      "lat": 30.256583
+    },
+    "openHoursText": "24小时营业",
+    "openingHours": [],
+    "openHoursConfidence": "unknown",
+    "avgCost": 0,
+    "rating": 4.7,
+    "source": "amap",
+    "tags": [
+      "湖滨公园",
+      "湖景",
+      "步行友好"
+    ],
+    "experienceTags": [
+      "lake-view",
+      "park",
+      "walk"
+    ],
+    "stayMinutes": 30,
+    "waitRisk": "low",
+    "crowdRisk": "medium",
+    "photoScore": 4,
+    "quietScore": 3,
+    "restScore": 3,
+    "familyScore": 4,
+    "chatScore": 2,
+    "classicScore": 4,
+    "localFlavorScore": 4,
+    "budgetScore": 5,
+    "walkFriendlyScore": 4,
+    "note": ""
+  },
+  {
+    "id": "photo_yuebo_pavilion",
+    "amapId": "B023B17XBK",
+    "name": "杭州西湖风景名胜区-月波亭(白堤)",
+    "type": "photo",
+    "address": "杭州西湖风景名胜区内(东北角)",
+    "location": {
+      "lng": 120.145777,
+      "lat": 30.252015
+    },
+    "openHoursText": "24小时营业",
+    "openingHours": [],
+    "openHoursConfidence": "unknown",
+    "avgCost": 0,
+    "rating": 3.8,
+    "source": "amap",
+    "tags": [
+      "白堤",
+      "亭子",
+      "拍照"
+    ],
+    "experienceTags": [
+      "photo",
+      "lake-view",
+      "pavilion"
+    ],
+    "stayMinutes": 20,
+    "waitRisk": "low",
+    "crowdRisk": "medium",
+    "photoScore": 5,
+    "quietScore": 3,
+    "restScore": 2,
+    "familyScore": 3,
+    "chatScore": 2,
+    "classicScore": 4,
+    "localFlavorScore": 4,
+    "budgetScore": 5,
+    "walkFriendlyScore": 3,
+    "note": ""
+  },
+  {
+    "id": "photo_fourth_park",
+    "amapId": "B023B1D0DW",
+    "name": "杭州西湖风景名胜区-四公园",
+    "type": "photo",
+    "address": "杭州西湖风景名胜区内(龙翔桥地铁站出入口步行370米)",
+    "location": {
+      "lng": 120.16034,
+      "lat": 30.255219
+    },
+    "openHoursText": "24小时营业",
+    "openingHours": [],
+    "openHoursConfidence": "unknown",
+    "avgCost": 0,
+    "rating": 4.1,
+    "source": "amap",
+    "tags": [
+      "湖滨",
+      "近音乐喷泉",
+      "拍照"
+    ],
+    "experienceTags": [
+      "photo",
+      "lake-view",
+      "near-fountain"
+    ],
+    "stayMinutes": 20,
+    "waitRisk": "low",
+    "crowdRisk": "medium",
+    "photoScore": 4,
+    "quietScore": 3,
+    "restScore": 3,
+    "familyScore": 4,
+    "chatScore": 2,
+    "classicScore": 4,
+    "localFlavorScore": 4,
+    "budgetScore": 5,
+    "walkFriendlyScore": 4,
+    "note": ""
+  },
+  {
+    "id": "photo_yigongyuan_pier",
+    "amapId": "B0L1YSDHPW",
+    "name": "杭州西湖——公园码头",
+    "type": "photo",
+    "address": "南山路189号",
+    "location": {
+      "lng": 120.161119,
+      "lat": 30.250145
+    },
+    "openHoursText": "06:00-21:00",
+    "openingHours": [],
+    "openHoursConfidence": "unknown",
+    "avgCost": 0,
+    "rating": 3.5,
+    "source": "amap",
+    "tags": [
+      "码头",
+      "湖景",
+      "拍照"
+    ],
+    "experienceTags": [
+      "photo",
+      "lake-view",
+      "pier"
+    ],
+    "stayMinutes": 20,
+    "waitRisk": "low",
+    "crowdRisk": "medium",
+    "photoScore": 5,
+    "quietScore": 3,
+    "restScore": 2,
+    "familyScore": 3,
+    "chatScore": 2,
+    "classicScore": 4,
+    "localFlavorScore": 4,
+    "budgetScore": 5,
+    "walkFriendlyScore": 3,
+    "note": ""
+  },
+  {
+    "id": "photo_westlake_stone",
+    "amapId": "B0FFFDG53P",
+    "name": "杭州西湖风景名胜区-杭州西湖石刻",
+    "type": "photo",
+    "address": "湖滨路附近湖滨公园一公园内",
+    "location": {
+      "lng": 120.162796,
+      "lat": 30.250769
+    },
+    "openHoursText": "24小时营业",
+    "openingHours": [],
+    "openHoursConfidence": "unknown",
+    "avgCost": 0,
+    "rating": 4.2,
+    "source": "amap",
+    "tags": [
+      "石刻",
+      "一公园",
+      "拍照"
+    ],
+    "experienceTags": [
+      "photo",
+      "landmark",
+      "park"
+    ],
+    "stayMinutes": 15,
+    "waitRisk": "low",
+    "crowdRisk": "medium",
+    "photoScore": 4,
+    "quietScore": 3,
+    "restScore": 2,
+    "familyScore": 3,
+    "chatScore": 2,
+    "classicScore": 3,
+    "localFlavorScore": 4,
+    "budgetScore": 5,
+    "walkFriendlyScore": 4,
+    "note": ""
+  },
+  {
+    "id": "coffee_cosmic_joy",
+    "amapId": "B0L0TSAZBH",
+    "name": "Cosmic Joy Cafe",
+    "type": "coffee",
+    "address": "西湖街道北山街28号2层",
+    "location": {
+      "lng": 120.15014,
+      "lat": 30.259636
+    },
+    "openHoursText": "09:00-20:30",
+    "openingHours": [],
+    "openHoursConfidence": "unknown",
+    "avgCost": 67,
+    "rating": 4.5,
+    "source": "amap",
+    "tags": [
+      "北山街",
+      "咖啡",
+      "中段休息"
+    ],
+    "experienceTags": [
+      "coffee",
+      "rest",
+      "chat"
+    ],
+    "stayMinutes": 35,
+    "waitRisk": "medium",
+    "crowdRisk": "medium",
+    "photoScore": 3,
+    "quietScore": 4,
+    "restScore": 5,
+    "familyScore": 3,
+    "chatScore": 5,
+    "classicScore": 3,
+    "localFlavorScore": 3,
+    "budgetScore": 2,
+    "walkFriendlyScore": 3,
+    "note": ""
+  },
+  {
+    "id": "coffee_starbucks_duanqiao",
+    "amapId": "B0FFGBI4CZ",
+    "name": "星巴克(杭州断桥店)",
+    "type": "coffee",
+    "address": "北山街9号",
+    "location": {
+      "lng": 120.152205,
+      "lat": 30.259702
+    },
+    "openHoursText": "07:00-22:30",
+    "openingHours": [],
+    "openHoursConfidence": "unknown",
+    "avgCost": 30,
+    "rating": 4.7,
+    "source": "amap",
+    "tags": [
+      "断桥附近",
+      "咖啡",
+      "可休息"
+    ],
+    "experienceTags": [
+      "coffee",
+      "rest",
+      "near-scenic"
+    ],
+    "stayMinutes": 30,
+    "waitRisk": "medium",
+    "crowdRisk": "medium",
+    "photoScore": 3,
+    "quietScore": 3,
+    "restScore": 5,
+    "familyScore": 4,
+    "chatScore": 4,
+    "classicScore": 3,
+    "localFlavorScore": 2,
+    "budgetScore": 3,
+    "walkFriendlyScore": 4,
+    "note": ""
+  },
+  {
+    "id": "coffee_starbucks_kerry",
+    "amapId": "B0HADOGYLB",
+    "name": "星巴克咖啡(杭州嘉里中心店)",
+    "type": "coffee",
+    "address": "延安路385号嘉里中心购物中心4层L419b号单元",
+    "location": {
+      "lng": 120.162315,
+      "lat": 30.260815
+    },
+    "openHoursText": "10:00-22:00",
+    "openingHours": [],
+    "openHoursConfidence": "unknown",
+    "avgCost": 30,
+    "rating": 4.6,
+    "source": "amap",
+    "tags": [
+      "嘉里中心",
+      "咖啡",
+      "商场休息"
+    ],
+    "experienceTags": [
+      "coffee",
+      "mall",
+      "rest"
+    ],
+    "stayMinutes": 30,
+    "waitRisk": "low",
+    "crowdRisk": "medium",
+    "photoScore": 2,
+    "quietScore": 3,
+    "restScore": 5,
+    "familyScore": 4,
+    "chatScore": 4,
+    "classicScore": 2,
+    "localFlavorScore": 2,
+    "budgetScore": 3,
+    "walkFriendlyScore": 5,
+    "note": ""
+  },
+  {
+    "id": "coffee_peets_kerry",
+    "amapId": "B0J2UZZL94",
+    "name": "EqualParts皮爷咖啡Peet's(杭州嘉里中心店)",
+    "type": "coffee",
+    "address": "延安路385号杭州嘉里中心1层L127b室",
+    "location": {
+      "lng": 120.162221,
+      "lat": 30.260421
+    },
+    "openHoursText": "07:00-18:00",
+    "openingHours": [],
+    "openHoursConfidence": "unknown",
+    "avgCost": 39,
+    "rating": 4.6,
+    "source": "amap",
+    "tags": [
+      "嘉里中心",
+      "咖啡",
+      "聊天"
+    ],
+    "experienceTags": [
+      "coffee",
+      "mall",
+      "chat"
+    ],
+    "stayMinutes": 35,
+    "waitRisk": "low",
+    "crowdRisk": "medium",
+    "photoScore": 2,
+    "quietScore": 3,
+    "restScore": 5,
+    "familyScore": 3,
+    "chatScore": 5,
+    "classicScore": 2,
+    "localFlavorScore": 2,
+    "budgetScore": 3,
+    "walkFriendlyScore": 5,
+    "note": ""
+  },
+  {
+    "id": "dinner_xinbailu_hubin88",
+    "amapId": "B0J119884W",
+    "name": "新白鹿餐厅(湖滨88店)",
+    "type": "dinner",
+    "address": "平海路124号(湖滨88店)",
+    "location": {
+      "lng": 120.162138,
+      "lat": 30.255253
+    },
+    "openHoursText": "周一至周五10:30-14:00;16:00-21:00;周六至周日及节假日10:30-14:30;16:00-21:00",
+    "openingHours": [],
+    "openHoursConfidence": "unknown",
+    "avgCost": 65,
+    "rating": 4.7,
+    "source": "amap",
+    "tags": [
+      "杭帮菜",
+      "湖滨88",
+      "晚餐"
+    ],
+    "experienceTags": [
+      "dinner",
+      "local-cuisine",
+      "budget"
+    ],
+    "stayMinutes": 50,
+    "waitRisk": "medium",
+    "crowdRisk": "medium",
+    "photoScore": 2,
+    "quietScore": 2,
+    "restScore": 3,
+    "familyScore": 4,
+    "chatScore": 3,
+    "classicScore": 4,
+    "localFlavorScore": 5,
+    "budgetScore": 4,
+    "walkFriendlyScore": 4,
+    "note": ""
+  },
+  {
+    "id": "dinner_wangjiangmen_xiaolongxia",
+    "amapId": "B0FFKAZUVG",
+    "name": "望江门小龙虾(西湖店)",
+    "type": "dinner",
+    "address": "武林路76号二楼(凤起路地铁站C4口步行310米)",
+    "location": {
+      "lng": 120.160598,
+      "lat": 30.261085
+    },
+    "openHoursText": "11:00-06:00",
+    "openingHours": [],
+    "openHoursConfidence": "unknown",
+    "avgCost": 94,
+    "rating": 4.7,
+    "source": "amap",
+    "tags": [
+      "武林路",
+      "晚餐",
+      "聚餐"
+    ],
+    "experienceTags": [
+      "dinner",
+      "seafood",
+      "chat"
+    ],
+    "stayMinutes": 55,
+    "waitRisk": "medium",
+    "crowdRisk": "medium",
+    "photoScore": 2,
+    "quietScore": 2,
+    "restScore": 3,
+    "familyScore": 3,
+    "chatScore": 4,
+    "classicScore": 2,
+    "localFlavorScore": 3,
+    "budgetScore": 3,
+    "walkFriendlyScore": 4,
+    "note": ""
+  },
+  {
+    "id": "dinner_xinbailu_longyou",
+    "amapId": "B023B08YEK",
+    "name": "新白鹿餐厅(龙游路店)",
+    "type": "dinner",
+    "address": "龙游路56号(凤起路地铁站E口步行420米)",
+    "location": {
+      "lng": 120.159508,
+      "lat": 30.262055
+    },
+    "openHoursText": "16:00-14:00",
+    "openingHours": [],
+    "openHoursConfidence": "unknown",
+    "avgCost": 65,
+    "rating": 4.7,
+    "source": "amap",
+    "tags": [
+      "杭帮菜",
+      "龙游路",
+      "预算友好"
+    ],
+    "experienceTags": [
+      "dinner",
+      "local-cuisine",
+      "budget"
+    ],
+    "stayMinutes": 50,
+    "waitRisk": "medium",
+    "crowdRisk": "medium",
+    "photoScore": 2,
+    "quietScore": 2,
+    "restScore": 3,
+    "familyScore": 4,
+    "chatScore": 3,
+    "classicScore": 4,
+    "localFlavorScore": 5,
+    "budgetScore": 4,
+    "walkFriendlyScore": 4,
+    "note": ""
+  },
+  {
+    "id": "dinner_yinhu_hangwei",
+    "amapId": "B0KKVUMI1H",
+    "name": "印湖杭味·创意杭帮菜(西湖店)",
+    "type": "dinner",
+    "address": "武林街道环城西路28-13号(温德姆酒店楼下近西湖武林夜市)",
+    "location": {
+      "lng": 120.158492,
+      "lat": 30.262382
+    },
+    "openHoursText": "10:30-22:30",
+    "openingHours": [],
+    "openHoursConfidence": "unknown",
+    "avgCost": 74,
+    "rating": 4.7,
+    "source": "amap",
+    "tags": [
+      "杭帮菜",
+      "西湖边",
+      "晚餐"
+    ],
+    "experienceTags": [
+      "dinner",
+      "local-cuisine",
+      "near-lake"
+    ],
+    "stayMinutes": 50,
+    "waitRisk": "medium",
+    "crowdRisk": "medium",
+    "photoScore": 2,
+    "quietScore": 2,
+    "restScore": 3,
+    "familyScore": 4,
+    "chatScore": 3,
+    "classicScore": 4,
+    "localFlavorScore": 5,
+    "budgetScore": 4,
+    "walkFriendlyScore": 4,
+    "note": ""
+  },
+  {
+    "id": "dinner_xinfeng_qingchun",
+    "amapId": "B0FFH0EBLM",
+    "name": "新丰小吃(庆春路分店)",
+    "type": "dinner",
+    "address": "庆春路209号天阳明珠商业中心1-2层",
+    "location": {
+      "lng": 120.164389,
+      "lat": 30.258091
+    },
+    "openHoursText": "05:00-20:30",
+    "openingHours": [],
+    "openHoursConfidence": "unknown",
+    "avgCost": 21,
+    "rating": 4.6,
+    "source": "amap",
+    "tags": [
+      "杭州小吃",
+      "低预算",
+      "快餐"
+    ],
+    "experienceTags": [
+      "dinner",
+      "snack",
+      "budget"
+    ],
+    "stayMinutes": 35,
+    "waitRisk": "low",
+    "crowdRisk": "medium",
+    "photoScore": 1,
+    "quietScore": 2,
+    "restScore": 3,
+    "familyScore": 4,
+    "chatScore": 2,
+    "classicScore": 3,
+    "localFlavorScore": 5,
+    "budgetScore": 5,
+    "walkFriendlyScore": 5,
+    "note": ""
+  },
+  {
+    "id": "dinner_yanlanlou_fountain",
+    "amapId": "B0K2LSOVIE",
+    "name": "清真宴兰楼·西北菜·团建聚餐·西湖音乐喷泉店",
+    "type": "dinner",
+    "address": "湖滨路48号国贸停车场入口直行看到菏韵西子右转20米到店",
+    "location": {
+      "lng": 120.159452,
+      "lat": 30.257437
+    },
+    "openHoursText": "09:00-24:00",
+    "openingHours": [],
+    "openHoursConfidence": "unknown",
+    "avgCost": 53,
+    "rating": 4.6,
+    "source": "amap",
+    "tags": [
+      "音乐喷泉附近",
+      "低预算",
+      "聚餐"
+    ],
+    "experienceTags": [
+      "dinner",
+      "budget",
+      "near-fountain"
+    ],
+    "stayMinutes": 50,
+    "waitRisk": "medium",
+    "crowdRisk": "medium",
+    "photoScore": 2,
+    "quietScore": 2,
+    "restScore": 3,
+    "familyScore": 3,
+    "chatScore": 4,
+    "classicScore": 2,
+    "localFlavorScore": 2,
+    "budgetScore": 4,
+    "walkFriendlyScore": 4,
+    "note": ""
+  },
+  {
+    "id": "mall_in77_b",
+    "amapId": "B023B1DIOC",
+    "name": "杭州湖滨in77B区",
+    "type": "mall",
+    "address": "延安路245号",
+    "location": {
+      "lng": 120.163391,
+      "lat": 30.25457
+    },
+    "openHoursText": "10:00-22:00",
+    "openingHours": [],
+    "openHoursConfidence": "unknown",
+    "avgCost": 100,
+    "rating": 4.7,
+    "source": "amap",
+    "tags": [
+      "湖滨银泰",
+      "商场",
+      "休息补给"
+    ],
+    "experienceTags": [
+      "mall",
+      "rest",
+      "shelter"
+    ],
+    "stayMinutes": 25,
+    "waitRisk": "low",
+    "crowdRisk": "high",
+    "photoScore": 2,
+    "quietScore": 3,
+    "restScore": 5,
+    "familyScore": 5,
+    "chatScore": 3,
+    "classicScore": 2,
+    "localFlavorScore": 3,
+    "budgetScore": 3,
+    "walkFriendlyScore": 5,
+    "note": ""
+  },
+  {
+    "id": "mall_kerry_center",
+    "amapId": "B0FFG56P7H",
+    "name": "杭州嘉里中心",
+    "type": "mall",
+    "address": "延安路385号(凤起路地铁站C4口步行90米)",
+    "location": {
+      "lng": 120.162495,
+      "lat": 30.260281
+    },
+    "openHoursText": "10:00-22:00",
+    "openingHours": [],
+    "openHoursConfidence": "unknown",
+    "avgCost": 150,
+    "rating": 4.9,
+    "source": "amap",
+    "tags": [
+      "嘉里中心",
+      "商场",
+      "休息补给"
+    ],
+    "experienceTags": [
+      "mall",
+      "rest",
+      "shelter"
+    ],
+    "stayMinutes": 25,
+    "waitRisk": "low",
+    "crowdRisk": "medium",
+    "photoScore": 2,
+    "quietScore": 3,
+    "restScore": 5,
+    "familyScore": 5,
+    "chatScore": 3,
+    "classicScore": 2,
+    "localFlavorScore": 3,
+    "budgetScore": 3,
+    "walkFriendlyScore": 5,
+    "note": ""
+  },
+  {
+    "id": "mall_hubin88",
+    "amapId": "B0GRK54YP4",
+    "name": "杭州湖滨88",
+    "type": "mall",
+    "address": "平海路124号(龙翔桥地铁站B口步行150米)",
+    "location": {
+      "lng": 120.16245,
+      "lat": 30.25471
+    },
+    "openHoursText": "10:00-22:00",
+    "openingHours": [],
+    "openHoursConfidence": "unknown",
+    "avgCost": 50,
+    "rating": 4.7,
+    "source": "amap",
+    "tags": [
+      "湖滨88",
+      "商场",
+      "休息"
+    ],
+    "experienceTags": [
+      "mall",
+      "rest",
+      "near-metro"
+    ],
+    "stayMinutes": 25,
+    "waitRisk": "low",
+    "crowdRisk": "medium",
+    "photoScore": 2,
+    "quietScore": 3,
+    "restScore": 5,
+    "familyScore": 5,
+    "chatScore": 3,
+    "classicScore": 2,
+    "localFlavorScore": 3,
+    "budgetScore": 3,
+    "walkFriendlyScore": 5,
+    "note": ""
+  },
+  {
+    "id": "rest_hubin_pedestrian",
+    "amapId": "B0FFL9RQ5O",
+    "name": "湖滨步行街",
+    "type": "rest",
+    "address": "凤起路539-4号(龙翔桥地铁站C口步行120米)",
+    "location": {
+      "lng": 120.162923,
+      "lat": 30.254158
+    },
+    "openHoursText": "10:00-22:00",
+    "openingHours": [],
+    "openHoursConfidence": "unknown",
+    "avgCost": 0,
+    "rating": 4.8,
+    "source": "amap",
+    "tags": [
+      "步行街",
+      "湖滨",
+      "低消费"
+    ],
+    "experienceTags": [
+      "rest",
+      "walk",
+      "shopping-street"
+    ],
+    "stayMinutes": 25,
+    "waitRisk": "low",
+    "crowdRisk": "medium",
+    "photoScore": 3,
+    "quietScore": 3,
+    "restScore": 3,
+    "familyScore": 4,
+    "chatScore": 3,
+    "classicScore": 3,
+    "localFlavorScore": 3,
+    "budgetScore": 5,
+    "walkFriendlyScore": 4,
+    "note": ""
+  },
+  {
+    "id": "snack_panfangchun_jianjiao",
+    "amapId": "B0LGR5BX67",
+    "name": "泮芳春煎饺(龙翔桥店)",
+    "type": "snack",
+    "address": "延安路298号龙翔大厦F1层",
+    "location": {
+      "lng": 120.16422,
+      "lat": 30.256386
+    },
+    "openHoursText": "06:00-22:00",
+    "openingHours": [],
+    "openHoursConfidence": "unknown",
+    "avgCost": 16,
+    "rating": 4.7,
+    "source": "amap",
+    "tags": [
+      "小吃",
+      "低预算",
+      "龙翔桥"
+    ],
+    "experienceTags": [
+      "snack",
+      "budget",
+      "quick"
+    ],
+    "stayMinutes": 25,
+    "waitRisk": "low",
+    "crowdRisk": "medium",
+    "photoScore": 1,
+    "quietScore": 2,
+    "restScore": 2,
+    "familyScore": 4,
+    "chatScore": 2,
+    "classicScore": 3,
+    "localFlavorScore": 5,
+    "budgetScore": 5,
+    "walkFriendlyScore": 5,
+    "note": ""
+  },
+  {
+    "id": "snack_mizong_dabao",
+    "amapId": "B023B1H5QV",
+    "name": "南方迷宗大包(湖滨店)",
+    "type": "snack",
+    "address": "邮电路82号1楼(龙翔桥地铁站C口步行330米)",
+    "location": {
+      "lng": 120.163844,
+      "lat": 30.251703
+    },
+    "openHoursText": "06:30-17:00",
+    "openingHours": [],
+    "openHoursConfidence": "unknown",
+    "avgCost": 11,
+    "rating": 4.7,
+    "source": "amap",
+    "tags": [
+      "小吃",
+      "低预算",
+      "湖滨"
+    ],
+    "experienceTags": [
+      "snack",
+      "budget",
+      "quick"
+    ],
+    "stayMinutes": 20,
+    "waitRisk": "low",
+    "crowdRisk": "medium",
+    "photoScore": 1,
+    "quietScore": 2,
+    "restScore": 2,
+    "familyScore": 4,
+    "chatScore": 2,
+    "classicScore": 3,
+    "localFlavorScore": 5,
+    "budgetScore": 5,
+    "walkFriendlyScore": 5,
+    "note": ""
+  }
+]

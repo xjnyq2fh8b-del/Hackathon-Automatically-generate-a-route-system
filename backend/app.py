@@ -1,9 +1,12 @@
 from copy import deepcopy
+from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+from backend.poi_catalog import load_poi_catalog_or_fallback, to_frontend_places
 
 
 app = FastAPI(title="Westlake Route Agent Mock API")
@@ -144,21 +147,9 @@ PLACES = [
 
 PLACE_BY_ID = {place["id"]: place for place in PLACES}
 
-FRONTEND_PLACE_FIELDS = {
-    "id",
-    "type",
-    "name",
-    "shortName",
-    "address",
-    "openHours",
-    "rating",
-    "price",
-    "tags",
-    "reason",
-    "note",
-    "map",
-    "location",
-}
+ROOT_DIR = Path(__file__).resolve().parents[1]
+POI_CATALOG_PATH = ROOT_DIR / "data" / "poiCatalog.json"
+POI_CATALOG, POI_CATALOG_LOADED, POI_CATALOG_ERRORS = load_poi_catalog_or_fallback(POI_CATALOG_PATH, PLACES)
 
 
 DEFAULT_ROUTE = {
@@ -356,19 +347,21 @@ NATURAL_ORDER = ["in77", "brokenBridge", "photoPoint", "baitacoffee", "convenien
 
 
 def _route_data(route: dict | None = None, diff: dict | None = None) -> dict:
+    route_payload = deepcopy(route or DEFAULT_ROUTE)
     return {
         "constraints": deepcopy(CONSTRAINTS),
-        "places": _frontend_places(PLACES),
-        "route": deepcopy(route or DEFAULT_ROUTE),
+        "places": _places_for_route(route_payload),
+        "route": route_payload,
         "diff": deepcopy(diff),
     }
 
 
-def _frontend_places(pois: list[dict]) -> list[dict]:
-    return [
-        {key: deepcopy(value) for key, value in poi.items() if key in FRONTEND_PLACE_FIELDS}
-        for poi in pois
-    ]
+def _places_for_route(route: dict) -> list[dict]:
+    route_place_ids = set(route.get("placeIds", []))
+    catalog_place_ids = {place.get("id") for place in POI_CATALOG}
+    if POI_CATALOG_LOADED and route_place_ids.issubset(catalog_place_ids):
+        return to_frontend_places(POI_CATALOG)
+    return to_frontend_places(PLACES)
 
 
 def _route_from_patch(patch: dict) -> dict:
@@ -539,4 +532,4 @@ def adjust_route(request: AdjustRequest) -> dict:
 
 @app.get("/api/pois")
 def list_pois() -> dict:
-    return {"places": _frontend_places(PLACES)}
+    return {"places": to_frontend_places(POI_CATALOG)}
