@@ -24,6 +24,10 @@ app.add_middleware(
 
 class TextRequest(BaseModel):
     text: str = ""
+    message: str = ""
+
+    def input_text(self) -> str:
+        return self.text or self.message
 
 
 class AdjustRequest(BaseModel):
@@ -523,7 +527,7 @@ def health() -> dict:
 
 @app.post("/api/parse")
 def parse_text(request: TextRequest) -> dict:
-    parse_intent(request.text)
+    parse_intent(request.input_text())
     return {"constraints": deepcopy(CONSTRAINTS)}
 
 
@@ -536,13 +540,13 @@ def _default_route_response() -> dict:
 
 @app.post("/api/route/generate")
 def generate_route(request: TextRequest) -> dict:
-    parse_intent(request.text)
+    parse_intent(request.input_text())
     return _default_route_response()
 
 
 @app.post("/api/chat-route")
 def chat_route(request: TextRequest) -> dict:
-    intent = parse_intent(request.text)
+    intent = parse_intent(request.input_text())
     adjustment_type = intent.get("adjustmentType") if intent.get("intent") == "adjustRoute" else None
     if adjustment_type in ADJUSTMENTS:
         return adjust_route(AdjustRequest(adjustmentType=adjustment_type))

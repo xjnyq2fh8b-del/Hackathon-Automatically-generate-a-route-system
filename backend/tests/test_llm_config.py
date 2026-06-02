@@ -140,6 +140,12 @@ class LLMConfigTest(unittest.TestCase):
         self.assertIn("routeData", response)
         self.assertIn("route", response["routeData"])
 
+    def test_chat_route_accepts_message_field(self) -> None:
+        with patch("backend.llm_client.call_llm_for_intent", return_value=None):
+            response = chat_route(TextRequest(message="不想喝咖啡了"))
+        self.assertIn("routeData", response)
+        self.assertIsInstance(response["routeData"]["diff"], dict)
+
     def test_route_api_response_does_not_include_llm_api_key(self) -> None:
         secret = "sk-test-should-not-leak"
         with patch.dict("os.environ", {"LLM_ENABLED": "false", "LLM_API_KEY": secret}, clear=True):
