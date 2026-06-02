@@ -834,6 +834,51 @@ function render() {
 }
 
 function renderInput() {
+  const exampleChips = [
+    { label: "少排队半日线", value: mockRouteData.input.examples[0] },
+    { label: "带老人小孩少走路", value: mockRouteData.input.examples[1] },
+    {
+      label: "预算100以内",
+      value: "我在湖滨银泰，现在出发，想逛西湖和吃晚饭，预算人均100以内，尽量少排队。",
+    },
+    { label: "想拍照但不想太网红", value: mockRouteData.input.examples[2] },
+  ];
+
+  return `
+    <section class="screen input-screen">
+      <div class="hero">
+        <div class="kicker">杭州西湖 · 现在出发</div>
+        <h1>一句话，生成现在能走的路线</h1>
+        <p>输入你现在的位置、时间、预算和想法，我会自动识别约束并给你一条可执行路线。</p>
+      </div>
+      <section class="agent-input-panel">
+        <div class="agent-input-head">
+          <span>告诉我你想怎么走</span>
+          <button class="mic ${state.micActive ? "active" : ""}" data-action="toggleMic" aria-label="语音输入">麦</button>
+        </div>
+        <textarea class="agent-textarea" data-field="intent">${escapeHtml(state.inputText)}</textarea>
+        <div class="input-hint">可输入一句话，语音输入下一版接入。</div>
+        <div class="mic-state">${state.micActive ? "语音输入演示中，当前请以文字输入为准" : ""}</div>
+        <div class="auto-note">系统会从你的自然语言中自动识别时间、预算、同行人和偏好。</div>
+        <div class="example-block">
+          <div class="section-label">试试这些需求</div>
+          <div class="examples example-chips">
+            ${exampleChips
+              .map(
+                (example) =>
+                  `<button class="example" data-action="useExample" data-value="${escapeHtml(example.value)}">${escapeHtml(example.label)}</button>`,
+              )
+              .join("")}
+          </div>
+        </div>
+        <button class="primary input-primary" data-action="generate">生成现在能走的路线</button>
+      </section>
+    </section>
+    ${renderToast()}
+  `;
+}
+
+function renderLegacyInput() {
   return `
     <section class="screen">
       <div class="hero">
