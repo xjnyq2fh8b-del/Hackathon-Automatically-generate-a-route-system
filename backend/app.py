@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from backend.intent_parser import parse_intent
 from backend.poi_catalog import load_poi_catalog_or_fallback, to_frontend_places
 from backend.route_planner import RoutePlannerError, generate_adjusted_route, generate_default_route
 
@@ -521,16 +522,23 @@ def health() -> dict:
 
 
 @app.post("/api/parse")
-def parse_text(_: TextRequest) -> dict:
+def parse_text(request: TextRequest) -> dict:
+    parse_intent(request.text)
     return {"constraints": deepcopy(CONSTRAINTS)}
 
 
 @app.post("/api/route/generate")
-def generate_route(_: TextRequest) -> dict:
+def generate_route(request: TextRequest) -> dict:
+    parse_intent(request.text)
     catalog_route_data = _try_catalog_default_route()
     if catalog_route_data:
         return {"routeData": catalog_route_data}
     return {"routeData": _route_data(diff=None)}
+
+
+@app.post("/api/chat-route")
+def chat_route(request: TextRequest) -> dict:
+    return generate_route(request)
 
 
 @app.post("/api/route/adjust")
