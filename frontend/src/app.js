@@ -647,6 +647,20 @@ function setState(patch) {
   render();
 }
 
+function rememberScrollPosition() {
+  const scroller = document.scrollingElement || document.documentElement;
+  return {
+    left: window.scrollX || scroller.scrollLeft || 0,
+    top: window.scrollY || scroller.scrollTop || 0,
+  };
+}
+
+function restoreScrollPosition(position) {
+  window.requestAnimationFrame(() => {
+    window.scrollTo(position.left, position.top);
+  });
+}
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -981,6 +995,7 @@ function renderResult() {
       <div class="route-brief">${displayText(mockRouteData.constraints.summary, "当前约束待确认")}</div>
       ${renderSummary(route)}
       ${renderNextAction(route)}
+      ${renderAgentAdjustEntry()}
       ${renderTabs()}
       <section class="tab-body">
         ${state.activeTab === "route" ? renderRouteTab(route) : ""}
@@ -1025,6 +1040,18 @@ function renderNextAction(route) {
       <h3>下一站：${displayText(nextName, "下一站待确认")}</h3>
       <p>从${displayText(currentName, "当前位置")}${displayText(method, "交通方式待确认")}${displayText(duration, "")}，预计${displayText(arrive, "到达时间待确认")}到达。</p>
     </section>
+  `;
+}
+
+function renderAgentAdjustEntry() {
+  return `
+    <button class="agent-adjust-entry" data-action="openDrawer">
+      <span>
+        <strong>现场变了？直接说一句改路线</strong>
+        <em>例如：少排队一点 / 不要咖啡 / 只剩2小时</em>
+      </span>
+      <b>去修改</b>
+    </button>
   `;
 }
 
@@ -1098,7 +1125,7 @@ function renderMap(route, mode) {
           .join("")}
         ${mode === "large" ? `<div class="map-active-place"><strong>${displayText(activeNode.name, "地点待确认")}</strong><span>${displayText(typeText[activeNode.type], "类型待确认")}｜${displayText(activeNode.arrive, "到达时间待确认")} 到达</span></div>` : ""}
       </div>
-      ${mode === "large" ? `<div class="map-caption"><span>点击编号同步查看节点</span><span>${displayText(nodes.find((node) => node.id === state.selectedNodeId)?.name, "")}</span></div>` : ""}
+      ${mode === "large" ? `<div class="map-caption"><span>当前为路线节点示意，真实步行路径将在接入高德后展示。</span><span>${displayText(nodes.find((node) => node.id === state.selectedNodeId)?.name, "")}</span></div>` : ""}
     </section>
   `;
 }
@@ -1148,12 +1175,7 @@ function renderPoiCards(route) {
                 <div class="mini-grid"><div class="mini"><strong>开放时间</strong>${displayText(node.openHours, "营业时间待确认")}</div><div class="mini"><strong>价格</strong>${displayText(node.price, "价格待确认")}</div></div>
                 <div class="small-tags">${safeArray(node.tags).map((tag) => `<span>${displayText(tag, "")}</span>`).join("")}</div>
                 <p class="why">为什么推荐：${displayText(node.reason, "推荐理由待确认")}</p>
-                <div class="poi-actions">
-                  <button class="small-btn primary-mini" data-action="replaceNode" data-id="${node.id}">替换</button>
-                  <button class="small-btn" data-action="deleteNode" data-id="${node.id}">删除</button>
-                  <button class="small-btn" data-action="moveNodeUp" data-id="${node.id}">上移</button>
-                  <button class="small-btn" data-action="moveNodeDown" data-id="${node.id}">下移</button>
-                </div>
+                ${renderPoiActions(node, index, nodes.length)}
               </div>
             </article>
           `)
@@ -1161,6 +1183,19 @@ function renderPoiCards(route) {
       </div>
     </section>
   `;
+}
+
+function renderPoiActions(node, index, total) {
+  const isStart = node.type === "start" || index === 0;
+  if (isStart) return "";
+  const actions = [
+    `<button class="small-btn primary-mini" data-action="replaceNode" data-id="${node.id}">换一个</button>`,
+    `<button class="small-btn" data-action="deleteNode" data-id="${node.id}">删掉</button>`,
+    index > 1 ? `<button class="small-btn" data-action="moveNodeUp" data-id="${node.id}">提前</button>` : "",
+    index < total - 1 ? `<button class="small-btn" data-action="moveNodeDown" data-id="${node.id}">往后</button>` : "",
+  ].filter(Boolean);
+  if (!actions.length) return "";
+  return `<div class="poi-actions">${actions.join("")}</div>`;
 }
 
 function renderPoiVisual(node, index) {
@@ -1181,7 +1216,7 @@ function renderBottomBar(route) {
   return `
     <div class="bottom-action-bar">
       <div><span>下一站</span><strong>${displayText(nextName, "下一站待确认")}｜${displayText(method, "交通方式待确认")}${displayText(duration, "")}</strong></div>
-      <button class="secondary" data-action="openDrawer">调整</button>
+      <button class="secondary" data-action="openDrawer">改路线</button>
       <button class="primary" data-action="followRoute">出发</button>
     </div>
   `;
@@ -1201,8 +1236,12 @@ function renderDrawer() {
       <p class="transport-note">我会尽量只改相关节点，不重生成整篇攻略。</p>
       <section class="nl-adjust-box" aria-label="自然语言调整入口">
         <textarea class="nl-adjust-input" data-field="naturalAdjust" placeholder="例如：我想少排队一点 / 不要咖啡 / 现在只剩2小时"></textarea>
-        <button class="primary nl-adjust-submit" data-action="submitNaturalAdjust">提交调整</button>
+        <button class="primary nl-adjust-submit" data-action="submitNaturalAdjust">发送</button>
       </section>
+      <div class="quick-head">
+        <strong>快捷调整</strong>
+        <span>以下调整已接入当前路线重算</span>
+      </div>
       <div class="quick-grid drawer-grid">
         ${mockRouteData.adjustmentButtons
           .map((button) => `<button class="quick-btn ${state.activeAdjustment === button.type ? "active" : ""}" data-action="adjust" data-type="${button.type}">${button.label}</button>`)
@@ -1277,12 +1316,14 @@ function handleAction(event) {
   if (action === "toggleTransport") setState({ transportOpen: !state.transportOpen });
   if (action === "toggleNodeDetail") {
     event.stopPropagation();
+    const scrollPosition = rememberScrollPosition();
     const exists = state.expandedNodes.includes(id);
     setState({
       expandedNodes: exists
         ? state.expandedNodes.filter((item) => item !== id)
         : [...state.expandedNodes, id],
     });
+    restoreScrollPosition(scrollPosition);
   }
   if (action === "selectNode") {
     setState({ selectedNodeId: id });
