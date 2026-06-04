@@ -2,6 +2,23 @@ const app = document.querySelector("#app");
 const API_BASE_URL = "http://127.0.0.1:8000";
 const USE_BACKEND_API = true;
 
+const fallbackImageByPlaceId = {
+  in77: "./assets/poi/in77.jpg",
+  start_in77: "./assets/poi/in77.jpg",
+  brokenBridge: "./assets/poi/broken-bridge.jpg",
+  scenic_broken_bridge: "./assets/poi/broken-bridge.jpg",
+  baitacoffee: "./assets/poi/baita-coffee.jpg",
+  cafe_lakeside_baita: "./assets/poi/baita-coffee.jpg",
+  xinbailu: "./assets/poi/xinbailu.jpg",
+  dinner_xinbailu_hubin: "./assets/poi/xinbailu.jpg",
+  nongtangli: "./assets/poi/nongtangli.jpg",
+  dinner_nongtangli_hubin: "./assets/poi/nongtangli.jpg",
+  photoPoint: "./assets/poi/beishan-photo.jpg",
+  photo_beishan_view: "./assets/poi/beishan-photo.jpg",
+  convenienceRest: "./assets/poi/hubin-rest.jpg",
+  rest_lakeside_light: "./assets/poi/hubin-rest.jpg",
+};
+
 const mockRouteData = {
   input: {
     defaultText:
@@ -350,6 +367,10 @@ let state = {
   transportOpen: false,
   expandedNodes: [],
   activeAdjustment: null,
+  naturalAdjustText: "",
+  naturalAdjustLoading: false,
+  constraints: mockRouteData.constraints,
+  constraintSummary: "",
   toast: "",
   hint: "",
 };
@@ -507,6 +528,12 @@ async function adjustRouteActionFromApi(action, currentRoute, targetNodeId) {
   }
 }
 
+function chatRouteFromApi(text, currentRoute) {
+  // TODO: Implement after the /api/chat-route request and response contract is confirmed.
+  // Do not guess request fields or response shape here.
+  return null;
+}
+
 async function readApiResponse(response) {
   const data = await response.json();
   if (!response.ok) {
@@ -521,6 +548,10 @@ async function readApiResponse(response) {
 function applyRouteData(routeData) {
   if (!routeData?.route || !Array.isArray(routeData.places)) {
     throw new Error("routeData is missing route or places");
+  }
+  if (routeData.constraints) {
+    state.constraints = routeData.constraints;
+    state.constraintSummary = formatConstraintSummary(routeData.constraints);
   }
   placeById = Object.fromEntries(routeData.places.map((place) => [place.id, place]));
   const route = resolveRoute(routeData.route);
@@ -576,6 +607,19 @@ function displayWaitRisk(value) {
 
 function safeArray(value) {
   return Array.isArray(value) ? value : [];
+}
+
+function formatConstraintSummary(constraints) {
+  if (hasValue(constraints?.summary)) return String(constraints.summary);
+  const chipValues = safeArray(constraints?.chips)
+    .map((chip) => chip?.value)
+    .filter(hasValue);
+  if (chipValues.length) return chipValues.join("｜");
+  return mockRouteData.constraints.summary;
+}
+
+function getConstraintSummary() {
+  return state.constraintSummary || formatConstraintSummary(state.constraints);
 }
 
 function routeToConfig(route) {
@@ -992,7 +1036,7 @@ function renderResult() {
   const route = state.route;
   return `
     <section class="screen result task-screen tab-${state.activeTab}">
-      <div class="route-brief">${displayText(mockRouteData.constraints.summary, "当前约束待确认")}</div>
+      <div class="route-brief">${displayText(getConstraintSummary(), "当前约束待确认")}</div>
       ${renderSummary(route)}
       ${renderNextAction(route)}
       ${renderAgentAdjustEntry()}
@@ -1199,7 +1243,8 @@ function renderPoiActions(node, index, total) {
 }
 
 function renderPoiVisual(node, index) {
-  const imageUrl = hasValue(node.imageUrl) ? String(node.imageUrl) : "";
+  const fallbackImageUrl = fallbackImageByPlaceId[node.id] || "";
+  const imageUrl = hasValue(node.imageUrl) ? String(node.imageUrl) : fallbackImageUrl;
   return `
     <div class="poi-visual ${displayText(node.type, "rest")} ${imageUrl ? "has-image" : ""}">
       ${imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="${displayText(node.name, "地点图片")}" loading="lazy" onerror="this.closest('.poi-visual')?.classList.add('image-failed'); this.remove();">` : ""}
@@ -1235,8 +1280,8 @@ function renderDrawer() {
       </div>
       <p class="transport-note">我会尽量只改相关节点，不重生成整篇攻略。</p>
       <section class="nl-adjust-box" aria-label="自然语言调整入口">
-        <textarea class="nl-adjust-input" data-field="naturalAdjust" placeholder="例如：我想少排队一点 / 不要咖啡 / 现在只剩2小时"></textarea>
-        <button class="primary nl-adjust-submit" data-action="submitNaturalAdjust">发送</button>
+        <textarea class="nl-adjust-input" data-field="naturalAdjust" placeholder="例如：我想少排队一点 / 不要咖啡 / 现在只剩2小时">${escapeHtml(state.naturalAdjustText)}</textarea>
+        <button class="primary nl-adjust-submit" data-action="submitNaturalAdjust">${state.naturalAdjustLoading ? "发送中" : "发送"}</button>
       </section>
       <div class="quick-head">
         <strong>快捷调整</strong>
@@ -1290,6 +1335,12 @@ function bindEvents() {
       state.inputText = event.target.value;
     });
   }
+  const naturalAdjustInput = document.querySelector("[data-field='naturalAdjust']");
+  if (naturalAdjustInput) {
+    naturalAdjustInput.addEventListener("input", (event) => {
+      state.naturalAdjustText = event.target.value;
+    });
+  }
 }
 
 function handleAction(event) {
@@ -1300,7 +1351,7 @@ function handleAction(event) {
   if (action === "toggleMic") setState({ micActive: !state.micActive });
   if (action === "useExample") setState({ inputText: target.dataset.value || mockRouteData.input.defaultText });
   if (action === "submitNaturalAdjust") {
-    showToast("自然语言调整入口已预留，真实接入将在 /api/chat-route 契约确认后完成");
+    showToast("/api/chat-route 契约确认后即可接入自然语言调整");
   }
   if (action === "togglePreference") {
     const value = target.dataset.value;
