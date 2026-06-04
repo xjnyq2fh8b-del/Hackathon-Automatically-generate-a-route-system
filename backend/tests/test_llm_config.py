@@ -9,7 +9,18 @@ from unittest.mock import patch
 
 from fastapi import HTTPException
 
-from backend.app import CHAT_ROUTE_REQUESTS, TextRequest, _enforce_chat_route_rate_limit, chat_route, generate_route, platform_health
+from backend.app import (
+    CHAT_ROUTE_REQUESTS,
+    LLM_DAILY_REQUESTS,
+    TextRequest,
+    _enforce_chat_route_rate_limit,
+    _enforce_daily_llm_limit,
+    _enforce_demo_token,
+    _enforce_message_length,
+    chat_route,
+    generate_route,
+    platform_health,
+)
 from backend.llm_client import call_llm_for_intent
 from backend.intent_parser import parse_intent
 
@@ -88,6 +99,9 @@ class LLMConfigTest(unittest.TestCase):
                 content = call_llm_for_intent("想更适合拍照")
         self.assertIn('"adjustmentType": "photo"', content)
         post_chat.assert_called_once()
+        payload = post_chat.call_args.args[1]
+        self.assertEqual(payload["max_tokens"], 500)
+        self.assertEqual(payload["max_completion_tokens"], 500)
 
     def test_llm_valid_create_route_json_keeps_chat_route_shape(self) -> None:
         llm_json = json.dumps(
@@ -184,8 +198,13 @@ class LLMConfigTest(unittest.TestCase):
         self.assertIn("LLM_MODEL=your_model_here\n", content)
         self.assertIn("LLM_PROVIDER=openai_compatible\n", content)
         self.assertIn("LLM_ENABLED=false\n", content)
+        self.assertIn("LLM_TIMEOUT_SECONDS=10\n", content)
+        self.assertIn("LLM_MAX_COMPLETION_TOKENS=500\n", content)
+        self.assertIn("LLM_DAILY_REQUEST_LIMIT=200\n", content)
         self.assertIn("FRONTEND_ORIGIN=http://localhost:3000\n", content)
         self.assertIn("ENABLE_DOCS=true\n", content)
+        self.assertIn("CHAT_ROUTE_MAX_MESSAGE_CHARS=500\n", content)
+        self.assertIn("DEMO_ACCESS_TOKEN=\n", content)
         self.assertNotIn("sk-", content)
 
     def test_platform_health_endpoint_payload(self) -> None:
@@ -208,6 +227,34 @@ class LLMConfigTest(unittest.TestCase):
             self.assertEqual(platform_health(), {"status": "ok"})
         self.assertEqual(CHAT_ROUTE_REQUESTS, {})
         CHAT_ROUTE_REQUESTS.clear()
+
+    def test_message_length_limit_rejects_long_prompt(self) -> None:
+        with patch.dict("os.environ", {"CHAT_ROUTE_MAX_MESSAGE_CHARS": "5"}, clear=False):
+            with self.assertRaises(HTTPException) as error:
+                _enforce_message_length("abcdef")
+        self.assertEqual(error.exception.status_code, 413)
+
+    def test_demo_token_is_optional_but_enforced_when_configured(self) -> None:
+        request = SimpleNamespace(headers={"x-demo-token": "right-token"}, client=SimpleNamespace(host="127.0.0.1"))
+        with patch.dict("os.environ", {}, clear=True):
+            _enforce_demo_token(request)
+        with patch.dict("os.environ", {"DEMO_ACCESS_TOKEN": "right-token"}, clear=True):
+            _enforce_demo_token(request)
+        with patch.dict("os.environ", {"DEMO_ACCESS_TOKEN": "right-token"}, clear=True):
+            bad_request = SimpleNamespace(headers={"x-demo-token": "wrong-token"}, client=SimpleNamespace(host="127.0.0.1"))
+            with self.assertRaises(HTTPException) as error:
+                _enforce_demo_token(bad_request)
+        self.assertEqual(error.exception.status_code, 403)
+
+    def test_daily_llm_limit_returns_429_after_limit(self) -> None:
+        LLM_DAILY_REQUESTS.clear()
+        with patch.dict("os.environ", {"LLM_DAILY_REQUEST_LIMIT": "2"}, clear=False):
+            _enforce_daily_llm_limit()
+            _enforce_daily_llm_limit()
+            with self.assertRaises(HTTPException) as error:
+                _enforce_daily_llm_limit()
+        self.assertEqual(error.exception.status_code, 429)
+        LLM_DAILY_REQUESTS.clear()
 
 
 if __name__ == "__main__":

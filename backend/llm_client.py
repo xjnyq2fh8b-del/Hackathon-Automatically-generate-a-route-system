@@ -8,7 +8,8 @@ from urllib import error, request
 
 
 TRUE_VALUES = {"1", "true", "yes", "on"}
-DEFAULT_TIMEOUT_SECONDS = 20
+DEFAULT_TIMEOUT_SECONDS = 10
+DEFAULT_MAX_COMPLETION_TOKENS = 500
 SYSTEM_PROMPT = """你是本地路线 Agent 的意图解析器。
 你只输出 JSON。
 不要输出 Markdown。
@@ -60,6 +61,8 @@ class LLMConfig:
     model: str
     provider: str
     enabled: bool
+    timeout_seconds: int
+    max_completion_tokens: int
 
     @property
     def is_ready(self) -> bool:
@@ -73,6 +76,8 @@ def load_llm_config() -> LLMConfig:
         model=os.getenv("LLM_MODEL", ""),
         provider=os.getenv("LLM_PROVIDER", "openai_compatible"),
         enabled=_env_enabled(os.getenv("LLM_ENABLED", "false")),
+        timeout_seconds=_env_int("LLM_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS),
+        max_completion_tokens=_env_int("LLM_MAX_COMPLETION_TOKENS", DEFAULT_MAX_COMPLETION_TOKENS),
     )
 
 
@@ -102,6 +107,8 @@ def call_llm_for_intent(message: str, currentRoute: dict | None = None) -> str |
         "messages": _build_messages(message, currentRoute),
         "temperature": 0,
         "response_format": {"type": "json_object"},
+        "max_tokens": config.max_completion_tokens,
+        "max_completion_tokens": config.max_completion_tokens,
     }
 
     try:
@@ -113,6 +120,17 @@ def call_llm_for_intent(message: str, currentRoute: dict | None = None) -> str |
 
 def _env_enabled(value: str | None) -> bool:
     return (value or "").strip().lower() in TRUE_VALUES
+
+
+def _env_int(name: str, default: int) -> int:
+    raw_value = os.getenv(name, "").strip()
+    if not raw_value:
+        return default
+    try:
+        value = int(raw_value)
+    except ValueError:
+        return default
+    return value if value > 0 else default
 
 
 def _build_messages(message: str, currentRoute: dict | None) -> list[dict[str, str]]:
@@ -142,7 +160,7 @@ def _post_chat_completions(config: LLMConfig, payload: dict[str, Any]) -> dict[s
             "Content-Type": "application/json",
         },
     )
-    with request.urlopen(req, timeout=DEFAULT_TIMEOUT_SECONDS) as response:
+    with request.urlopen(req, timeout=config.timeout_seconds) as response:
         return json.loads(response.read().decode("utf-8"))
 
 

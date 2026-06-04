@@ -17,10 +17,22 @@ TRUE_VALUES = {"1", "true", "yes", "on"}
 CHAT_ROUTE_RATE_LIMIT = 10
 CHAT_ROUTE_RATE_WINDOW_SECONDS = 60
 CHAT_ROUTE_REQUESTS: dict[str, list[float]] = {}
+LLM_DAILY_REQUESTS: dict[str, int | str] = {"day": "", "count": 0}
 
 
 def _env_enabled(name: str, default: str = "true") -> bool:
     return os.getenv(name, default).strip().lower() in TRUE_VALUES
+
+
+def _env_int(name: str, default: int) -> int:
+    raw_value = os.getenv(name, "").strip()
+    if not raw_value:
+        return default
+    try:
+        value = int(raw_value)
+    except ValueError:
+        return default
+    return value if value > 0 else default
 
 
 def _docs_path(path: str) -> str | None:
@@ -573,6 +585,37 @@ def _enforce_chat_route_rate_limit(request: Request | None) -> None:
     CHAT_ROUTE_REQUESTS[ip] = recent_requests
 
 
+def _enforce_demo_token(request: Request | None) -> None:
+    expected_token = os.getenv("DEMO_ACCESS_TOKEN", "").strip()
+    if not expected_token:
+        return
+    provided_token = request.headers.get("x-demo-token", "").strip() if request else ""
+    if provided_token != expected_token:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+
+def _enforce_message_length(text: str) -> None:
+    max_chars = _env_int("CHAT_ROUTE_MAX_MESSAGE_CHARS", 500)
+    if len(text or "") > max_chars:
+        raise HTTPException(status_code=413, detail="Message too long")
+
+
+def _today_utc() -> str:
+    return time.strftime("%Y-%m-%d", time.gmtime())
+
+
+def _enforce_daily_llm_limit() -> None:
+    limit = _env_int("LLM_DAILY_REQUEST_LIMIT", 200)
+    today = _today_utc()
+    if LLM_DAILY_REQUESTS.get("day") != today:
+        LLM_DAILY_REQUESTS["day"] = today
+        LLM_DAILY_REQUESTS["count"] = 0
+    count = int(LLM_DAILY_REQUESTS.get("count", 0))
+    if count >= limit:
+        raise HTTPException(status_code=429, detail="Daily LLM request limit reached")
+    LLM_DAILY_REQUESTS["count"] = count + 1
+
+
 @app.get("/api/health")
 def health() -> dict:
     return {"message": "服务正常"}
@@ -604,7 +647,10 @@ def generate_route(request: TextRequest) -> dict:
 
 @app.post("/api/chat-route")
 def chat_route_endpoint(request: TextRequest, http_request: Request) -> dict:
+    _enforce_demo_token(http_request)
     _enforce_chat_route_rate_limit(http_request)
+    _enforce_message_length(request.input_text())
+    _enforce_daily_llm_limit()
     return chat_route(request)
 
 

@@ -16,7 +16,17 @@ services:
         value: openai_compatible
       - key: LLM_ENABLED
         value: "true"
+      - key: LLM_TIMEOUT_SECONDS
+        value: "10"
+      - key: LLM_MAX_COMPLETION_TOKENS
+        value: "500"
+      - key: LLM_DAILY_REQUEST_LIMIT
+        value: "200"
       - key: FRONTEND_ORIGIN
         sync: false
       - key: ENABLE_DOCS
         value: "false"
+      - key: CHAT_ROUTE_MAX_MESSAGE_CHARS
+        value: "500"
+      - key: DEMO_ACCESS_TOKEN
+        sync: false
