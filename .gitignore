@@ -3,6 +3,9 @@ node_modules/
 .next/
 dist/
 build/
+react-bits/
+.codex/skills/react-bits/
+docs/react-bits-skill.md
 
 __pycache__/
 *.pyc
