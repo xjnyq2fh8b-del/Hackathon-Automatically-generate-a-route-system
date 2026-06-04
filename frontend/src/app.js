@@ -2,21 +2,22 @@ const app = document.querySelector("#app");
 const API_BASE_URL = "http://127.0.0.1:8000";
 const USE_BACKEND_API = true;
 
+// placeId fallback covers high-frequency demo POIs.
 const fallbackImageByPlaceId = {
   in77: "./assets/poi/in77.jpg",
-  start_in77: "./assets/poi/in77.jpg",
   brokenBridge: "./assets/poi/broken-bridge.jpg",
-  scenic_broken_bridge: "./assets/poi/broken-bridge.jpg",
-  baitacoffee: "./assets/poi/baita-coffee.jpg",
-  cafe_lakeside_baita: "./assets/poi/baita-coffee.jpg",
   xinbailu: "./assets/poi/xinbailu.jpg",
-  dinner_xinbailu_hubin: "./assets/poi/xinbailu.jpg",
   nongtangli: "./assets/poi/nongtangli.jpg",
-  dinner_nongtangli_hubin: "./assets/poi/nongtangli.jpg",
-  photoPoint: "./assets/poi/beishan-photo.jpg",
-  photo_beishan_view: "./assets/poi/beishan-photo.jpg",
+  photoPoint: "./assets/poi/beishan-street.jpg",
   convenienceRest: "./assets/poi/hubin-rest.jpg",
-  rest_lakeside_light: "./assets/poi/hubin-rest.jpg",
+};
+
+// type fallback covers new backend POIs or places without dedicated images.
+const fallbackImageByType = {
+  start: "./assets/poi/in77.jpg",
+  scenic: "./assets/poi/beishan-street.jpg",
+  dinner: "./assets/poi/restaurant-fallback.jpg",
+  rest: "./assets/poi/hubin-rest.jpg",
 };
 
 const mockRouteData = {
@@ -1243,8 +1244,9 @@ function renderPoiActions(node, index, total) {
 }
 
 function renderPoiVisual(node, index) {
-  const fallbackImageUrl = fallbackImageByPlaceId[node.id] || "";
-  const imageUrl = hasValue(node.imageUrl) ? String(node.imageUrl) : fallbackImageUrl;
+  const imageUrl = hasValue(node.imageUrl)
+    ? String(node.imageUrl)
+    : fallbackImageByPlaceId[node.id] || fallbackImageByType[node.type] || "";
   return `
     <div class="poi-visual ${displayText(node.type, "rest")} ${imageUrl ? "has-image" : ""}">
       ${imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="${displayText(node.name, "地点图片")}" loading="lazy" onerror="this.closest('.poi-visual')?.classList.add('image-failed'); this.remove();">` : ""}
