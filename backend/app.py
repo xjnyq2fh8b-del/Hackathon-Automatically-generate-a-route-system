@@ -11,7 +11,7 @@ from backend.poi_catalog import load_poi_catalog_or_fallback, to_frontend_places
 from backend.route_planner import RoutePlannerError, generate_adjusted_route, generate_default_route
 
 
-app = FastAPI(title="Westlake Route Agent Mock API")
+app = FastAPI(title="Westlake Route Agent API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -523,6 +523,11 @@ def _message_diff(title: str, action: str) -> dict:
 @app.get("/api/health")
 def health() -> dict:
     return {"message": "服务正常"}
+
+
+@app.get("/health")
+def platform_health() -> dict:
+    return {"status": "ok"}
 
 
 @app.post("/api/parse")

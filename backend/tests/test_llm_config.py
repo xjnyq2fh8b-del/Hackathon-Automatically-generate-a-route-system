@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from backend.app import TextRequest, chat_route, generate_route
+from backend.app import TextRequest, chat_route, generate_route, platform_health
 from backend.llm_client import call_llm_for_intent
 from backend.intent_parser import parse_intent
 
@@ -176,12 +176,15 @@ class LLMConfigTest(unittest.TestCase):
         env_example = ROOT / ".env.example"
         self.assertTrue(env_example.exists())
         content = env_example.read_text(encoding="utf-8")
-        self.assertIn("LLM_API_KEY=\n", content)
-        self.assertIn("LLM_BASE_URL=\n", content)
-        self.assertIn("LLM_MODEL=\n", content)
+        self.assertIn("LLM_API_KEY=your_api_key_here\n", content)
+        self.assertIn("LLM_BASE_URL=your_base_url_here\n", content)
+        self.assertIn("LLM_MODEL=your_model_here\n", content)
         self.assertIn("LLM_PROVIDER=openai_compatible\n", content)
         self.assertIn("LLM_ENABLED=false\n", content)
         self.assertNotIn("sk-", content)
+
+    def test_platform_health_endpoint_payload(self) -> None:
+        self.assertEqual(platform_health(), {"status": "ok"})
 
 
 if __name__ == "__main__":
