@@ -694,16 +694,38 @@ function setState(patch) {
 
 function rememberScrollPosition() {
   const scroller = document.scrollingElement || document.documentElement;
+  const targets = [".phone-shell", ".task-screen", ".bottom-drawer"];
   return {
     left: window.scrollX || scroller.scrollLeft || 0,
     top: window.scrollY || scroller.scrollTop || 0,
+    targets: targets.map((selector) => {
+      const element = document.querySelector(selector);
+      return {
+        selector,
+        left: element?.scrollLeft || 0,
+        top: element?.scrollTop || 0,
+      };
+    }),
   };
 }
 
 function restoreScrollPosition(position) {
   window.requestAnimationFrame(() => {
     window.scrollTo(position.left, position.top);
+    safeArray(position.targets).forEach((target) => {
+      const element = document.querySelector(target.selector);
+      if (element) {
+        element.scrollLeft = target.left;
+        element.scrollTop = target.top;
+      }
+    });
   });
+}
+
+function setStatePreservingScroll(patch) {
+  const scrollPosition = rememberScrollPosition();
+  setState(patch);
+  restoreScrollPosition(scrollPosition);
 }
 
 function escapeHtml(value) {
@@ -1328,7 +1350,7 @@ function bindEvents() {
   document.querySelectorAll(".poi-card").forEach((card) => {
     card.addEventListener("click", (event) => {
       if (event.target.closest("[data-action]")) return;
-      setState({ selectedNodeId: card.dataset.id });
+      setStatePreservingScroll({ selectedNodeId: card.dataset.id });
     });
   });
   const textarea = document.querySelector("[data-field='intent']");
@@ -1369,17 +1391,15 @@ function handleAction(event) {
   if (action === "toggleTransport") setState({ transportOpen: !state.transportOpen });
   if (action === "toggleNodeDetail") {
     event.stopPropagation();
-    const scrollPosition = rememberScrollPosition();
     const exists = state.expandedNodes.includes(id);
-    setState({
+    setStatePreservingScroll({
       expandedNodes: exists
         ? state.expandedNodes.filter((item) => item !== id)
         : [...state.expandedNodes, id],
     });
-    restoreScrollPosition(scrollPosition);
   }
   if (action === "selectNode") {
-    setState({ selectedNodeId: id });
+    setStatePreservingScroll({ selectedNodeId: id });
   }
   if (action === "openDrawer") setState({ drawerOpen: true });
   if (action === "closeDrawer") setState({ drawerOpen: false });
