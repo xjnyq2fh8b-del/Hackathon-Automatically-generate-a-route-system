@@ -359,7 +359,21 @@ function clone(value) {
 }
 
 function getPlace(id) {
-  return clone(placeById[id]);
+  if (placeById[id]) return clone(placeById[id]);
+  return {
+    id,
+    type: "rest",
+    name: "地点待确认",
+    shortName: "地点待确认",
+    address: "",
+    openHours: "",
+    rating: "",
+    price: "",
+    tags: [],
+    reason: "",
+    note: "",
+    map: { x: 50, y: 50 },
+  };
 }
 
 function resolveRoute(routeConfig) {
@@ -532,10 +546,36 @@ async function adjustRouteData(adjustmentType, currentRoute, targetNodeId) {
 }
 
 function formatDuration(minutes) {
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
+  const value = Number(minutes);
+  if (!Number.isFinite(value)) return "时长待确认";
+  const hours = Math.floor(value / 60);
+  const rest = value % 60;
   if (!hours) return `${rest}分钟`;
   return `${hours}小时${String(rest).padStart(2, "0")}分钟`;
+}
+
+function hasValue(value) {
+  return value !== undefined && value !== null && value !== "" && !Number.isNaN(value);
+}
+
+function displayText(value, fallback) {
+  return hasValue(value) ? escapeHtml(value) : fallback;
+}
+
+function displayBudget(value) {
+  return hasValue(value) ? `${escapeHtml(value)}元` : "预算待确认";
+}
+
+function displayDistance(value) {
+  return hasValue(value) ? `${escapeHtml(value)}km` : "距离待确认";
+}
+
+function displayWaitRisk(value) {
+  return hasValue(value) ? escapeHtml(value) : "等待待确认";
+}
+
+function safeArray(value) {
+  return Array.isArray(value) ? value : [];
 }
 
 function routeToConfig(route) {
@@ -584,11 +624,13 @@ function recalculateAfterManualChange(route, explanation) {
 }
 
 function getNextAction(route) {
-  const index = Math.max(0, route.nodes.findIndex((node) => node.id === state.selectedNodeId));
-  const safeIndex = index >= route.nodes.length - 1 ? 0 : index;
-  const current = route.nodes[safeIndex];
-  const next = route.nodes[safeIndex + 1] || route.nodes[1] || route.nodes[0];
-  const segment = route.transportSegments[safeIndex] || route.transportSegments[0];
+  const nodes = safeArray(route.nodes);
+  const segments = safeArray(route.transportSegments);
+  const index = Math.max(0, nodes.findIndex((node) => node.id === state.selectedNodeId));
+  const safeIndex = index >= nodes.length - 1 ? 0 : index;
+  const current = nodes[safeIndex] || {};
+  const next = nodes[safeIndex + 1] || nodes[1] || nodes[0] || {};
+  const segment = segments[safeIndex] || segments[0] || { method: "交通方式待确认", duration: "", from: "", to: "" };
   return { current, next, segment };
 }
 
@@ -936,7 +978,7 @@ function renderResult() {
   const route = state.route;
   return `
     <section class="screen result task-screen tab-${state.activeTab}">
-      <div class="route-brief">${mockRouteData.constraints.summary}</div>
+      <div class="route-brief">${displayText(mockRouteData.constraints.summary, "当前约束待确认")}</div>
       ${renderSummary(route)}
       ${renderNextAction(route)}
       ${renderTabs()}
@@ -956,15 +998,15 @@ function renderSummary(route) {
   return `
     <section class="card summary-card task-summary">
       <div>
-        <span class="summary-label">${route.label}</span>
-        <h2>${route.name}</h2>
-        <p>${route.explanation}</p>
+        <span class="summary-label">${displayText(route.label, "当前路线")}</span>
+        <h2>${displayText(route.name, "路线名称待确认")}</h2>
+        <p>${displayText(route.explanation, "路线理由待确认")}</p>
       </div>
       <div class="task-metrics">
         <div><strong>${formatDuration(route.durationMinutes)}</strong><span>总时长</span></div>
-        <div><strong>${route.budgetPerPerson}元</strong><span>人均</span></div>
-        <div><strong>${route.walkingKm}km</strong><span>步行</span></div>
-        <div><strong>${route.waitRisk}</strong><span>等待</span></div>
+        <div><strong>${displayBudget(route.budgetPerPerson)}</strong><span>人均</span></div>
+        <div><strong>${displayDistance(route.walkingKm)}</strong><span>步行</span></div>
+        <div><strong>${displayWaitRisk(route.waitRisk)}</strong><span>等待</span></div>
       </div>
     </section>
   `;
@@ -972,11 +1014,16 @@ function renderSummary(route) {
 
 function renderNextAction(route) {
   const { current, next, segment } = getNextAction(route);
+  const currentName = current.shortName || current.name || "当前位置";
+  const nextName = next.name || "下一站待确认";
+  const method = segment.method || "交通方式待确认";
+  const duration = segment.duration || "";
+  const arrive = next.arrive || "到达时间待确认";
   return `
     <section class="card next-card">
       <span>下一步行动</span>
-      <h3>下一站：${next.name}</h3>
-      <p>从${current.shortName || current.name}${segment.method}${segment.duration}，预计${next.arrive}到达。</p>
+      <h3>下一站：${displayText(nextName, "下一站待确认")}</h3>
+      <p>从${displayText(currentName, "当前位置")}${displayText(method, "交通方式待确认")}${displayText(duration, "")}，预计${displayText(arrive, "到达时间待确认")}到达。</p>
     </section>
   `;
 }
@@ -1004,20 +1051,24 @@ function renderRouteTab(route) {
         <span>完整交通方案</span>
         <strong>${state.transportOpen ? "收起" : "展开"}</strong>
       </button>
-      ${state.transportOpen ? renderTransportList(route) : `<p>${route.transportSummary}</p>`}
+      ${state.transportOpen ? renderTransportList(route) : `<p>${displayText(route.transportSummary, "交通方案待确认")}</p>`}
     </section>
     ${renderTimeline(route)}
   `;
 }
 
 function renderTransportList(route) {
+  const segments = safeArray(route.transportSegments);
+  if (!segments.length) {
+    return `<p class="empty-note">交通分段待确认，路线节点仍可按顺序查看。</p>`;
+  }
   return `
     <div class="segments">
-      ${route.transportSegments
+      ${segments
         .map((segment) => `
           <div class="segment">
             <span class="walk-icon">步</span>
-            <div><strong>${segment.from} → ${segment.to}</strong><span>${segment.method}${segment.duration}</span></div>
+            <div><strong>${displayText(segment.from, "出发地待确认")} → ${displayText(segment.to, "目的地待确认")}</strong><span>${displayText(segment.method, "交通方式待确认")}${displayText(segment.duration, "")}</span></div>
           </div>
         `)
         .join("")}
@@ -1026,48 +1077,50 @@ function renderTransportList(route) {
 }
 
 function renderMap(route, mode) {
-  const points = route.nodes.map((node) => `${node.map.x},${node.map.y}`).join(" ");
-  const activeNode = route.nodes.find((node) => node.id === state.selectedNodeId) || route.nodes[0];
+  const nodes = safeArray(route.nodes);
+  const points = nodes.map((node) => `${node.map?.x ?? 50},${node.map?.y ?? 50}`).join(" ");
+  const activeNode = nodes.find((node) => node.id === state.selectedNodeId) || nodes[0] || {};
   return `
     <section class="card map-card ${mode === "preview" ? "map-preview-card" : "map-large-card"}">
-      ${mode === "large" ? `<div class="section-head"><h3>路线地图</h3><span class="summary-label">${route.nodes.length}站</span></div>` : ""}
+      ${mode === "large" ? `<div class="section-head"><h3>路线地图</h3><span class="summary-label">${nodes.length}站</span></div>` : ""}
       <div class="map ${mode === "preview" ? "map-preview" : "map-large"}">
         <span class="lake-label">西湖水域</span>
         <span class="district-label">湖滨商圈</span>
         <svg class="route-line" viewBox="0 0 100 100" preserveAspectRatio="none"><polyline points="${points}"></polyline></svg>
-        ${route.nodes
+        ${nodes
           .map((node, index) => `
             <button class="marker ${node.id === state.selectedNodeId ? "active" : ""}"
-              style="left:${node.map.x}%;top:${node.map.y}%"
+              style="left:${node.map?.x ?? 50}%;top:${node.map?.y ?? 50}%"
               data-action="selectNode"
               data-id="${node.id}"
-              aria-label="${node.name}">${index + 1}</button>
+              aria-label="${displayText(node.name, "地点待确认")}">${index + 1}</button>
           `)
           .join("")}
-        ${mode === "large" ? `<div class="map-active-place"><strong>${activeNode.name}</strong><span>${typeText[activeNode.type]}｜${activeNode.arrive} 到达</span></div>` : ""}
+        ${mode === "large" ? `<div class="map-active-place"><strong>${displayText(activeNode.name, "地点待确认")}</strong><span>${displayText(typeText[activeNode.type], "类型待确认")}｜${displayText(activeNode.arrive, "到达时间待确认")} 到达</span></div>` : ""}
       </div>
-      ${mode === "large" ? `<div class="map-caption"><span>点击编号同步查看节点</span><span>${route.nodes.find((node) => node.id === state.selectedNodeId)?.name || ""}</span></div>` : ""}
+      ${mode === "large" ? `<div class="map-caption"><span>点击编号同步查看节点</span><span>${displayText(nodes.find((node) => node.id === state.selectedNodeId)?.name, "")}</span></div>` : ""}
     </section>
   `;
 }
 
 function renderTimeline(route) {
+  const nodes = safeArray(route.nodes);
   return `
     <section class="card">
       <div class="section-head"><h3>今天怎么走</h3><span class="summary-label">行动指令</span></div>
       <div class="timeline compact-timeline">
-        ${route.nodes
+        ${nodes
           .map((node, index) => {
             const expanded = state.expandedNodes.includes(node.id);
             return `
-              <article class="timeline-item ${node.id === state.selectedNodeId ? "active" : ""}" data-action="selectNode" data-id="${node.id}">
-                <div class="timebox"><strong>${node.arrive}</strong><span>${node.leave} 离开</span><div class="node-dot">${index + 1}</div></div>
+              <article class="timeline-item ${node.id === state.selectedNodeId ? "active" : ""}">
+                <div class="timebox"><strong>${displayText(node.arrive, "--:--")}</strong><span>${displayText(node.leave, "--:--")} 离开</span><div class="node-dot">${index + 1}</div></div>
                 <div class="timeline-body">
-                  <h4>${node.name}</h4>
-                  <div class="type-line">${typeIcon[node.type]} · ${typeText[node.type]}</div>
-                  ${node.next ? `<div class="next-step">下一段：${node.next}</div>` : `<div class="next-step">路线结束，湖滨商圈方便离开。</div>`}
+                  <h4>${displayText(node.name, "地点待确认")}</h4>
+                  <div class="type-line">${displayText(typeIcon[node.type], "点")} · ${displayText(typeText[node.type], "类型待确认")}</div>
+                  ${node.next ? `<div class="next-step">下一段：${displayText(node.next, "交通信息待确认")}</div>` : `<div class="next-step">路线结束，湖滨商圈方便离开。</div>`}
                   <button class="detail-toggle" data-action="toggleNodeDetail" data-id="${node.id}">${expanded ? "收起说明" : "查看理由"}</button>
-                  ${expanded ? `<p>${node.reason}</p>${node.note ? `<div class="notice">${node.note}</div>` : ""}` : ""}
+                  ${expanded ? `<p>${displayText(node.reason, "推荐理由待确认")}</p>${node.note ? `<div class="notice">${displayText(node.note, "")}</div>` : ""}` : ""}
                 </div>
               </article>
             `;
@@ -1079,21 +1132,22 @@ function renderTimeline(route) {
 }
 
 function renderPoiCards(route) {
+  const nodes = safeArray(route.nodes);
   return `
     <section class="card">
       <div class="section-head"><h3>目的地</h3><span class="summary-label">可局部调整</span></div>
       <div class="poi-list">
-        ${route.nodes
+        ${nodes
           .map((node, index) => `
             <article class="poi-card card ${node.id === state.selectedNodeId ? "active" : ""}" data-id="${node.id}">
-              <div class="poi-visual ${node.type}"><span class="poi-index">${index + 1}</span></div>
+              ${renderPoiVisual(node, index)}
               <div class="poi-content">
-                <div class="poi-meta"><span class="poi-type">${typeText[node.type]}</span><span class="poi-score">评分 ${node.rating}</span></div>
-                <h4>${node.name}</h4>
-                <p>${node.address}</p>
-                <div class="mini-grid"><div class="mini"><strong>开放时间</strong>${node.openHours}</div><div class="mini"><strong>价格</strong>${node.price}</div></div>
-                <div class="small-tags">${node.tags.map((tag) => `<span>${tag}</span>`).join("")}</div>
-                <p class="why">为什么推荐：${node.reason}</p>
+                <div class="poi-meta"><span class="poi-type">${displayText(typeText[node.type], "类型待确认")}</span><span class="poi-score">评分 ${displayText(node.rating, "暂无评分")}</span></div>
+                <h4>${displayText(node.name, "地点待确认")}</h4>
+                <p>${displayText(node.address, "地址待确认")}</p>
+                <div class="mini-grid"><div class="mini"><strong>开放时间</strong>${displayText(node.openHours, "营业时间待确认")}</div><div class="mini"><strong>价格</strong>${displayText(node.price, "价格待确认")}</div></div>
+                <div class="small-tags">${safeArray(node.tags).map((tag) => `<span>${displayText(tag, "")}</span>`).join("")}</div>
+                <p class="why">为什么推荐：${displayText(node.reason, "推荐理由待确认")}</p>
                 <div class="poi-actions">
                   <button class="small-btn primary-mini" data-action="replaceNode" data-id="${node.id}">替换</button>
                   <button class="small-btn" data-action="deleteNode" data-id="${node.id}">删除</button>
@@ -1109,11 +1163,24 @@ function renderPoiCards(route) {
   `;
 }
 
+function renderPoiVisual(node, index) {
+  const imageUrl = hasValue(node.imageUrl) ? String(node.imageUrl) : "";
+  return `
+    <div class="poi-visual ${displayText(node.type, "rest")} ${imageUrl ? "has-image" : ""}">
+      ${imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="${displayText(node.name, "地点图片")}" loading="lazy" onerror="this.closest('.poi-visual')?.classList.add('image-failed'); this.remove();">` : ""}
+      <span class="poi-index">${index + 1}</span>
+    </div>
+  `;
+}
+
 function renderBottomBar(route) {
   const { next, segment } = getNextAction(route);
+  const nextName = next.name || "下一站待确认";
+  const method = segment.method || "交通方式待确认";
+  const duration = segment.duration ? segment.duration.replace("约", "") : "";
   return `
     <div class="bottom-action-bar">
-      <div><span>下一站</span><strong>${next.name}｜${segment.method}${segment.duration.replace("约", "")}</strong></div>
+      <div><span>下一站</span><strong>${displayText(nextName, "下一站待确认")}｜${displayText(method, "交通方式待确认")}${displayText(duration, "")}</strong></div>
       <button class="secondary" data-action="openDrawer">调整</button>
       <button class="primary" data-action="followRoute">出发</button>
     </div>
@@ -1122,32 +1189,39 @@ function renderBottomBar(route) {
 
 function renderDrawer() {
   if (!state.drawerOpen) return "";
+  const hasDiffRows = state.diff && safeArray(state.diff.rows).length;
   return `
     <div class="drawer-backdrop" data-action="closeDrawer"></div>
     <aside class="bottom-drawer" role="dialog" aria-label="调整路线">
       <div class="drawer-handle"></div>
       <div class="section-head">
-        <h3>现场变了，就局部调整</h3>
+        <h3>想怎么改？直接说一句</h3>
         <button class="drawer-close" data-action="closeDrawer">关闭</button>
       </div>
-      <p class="transport-note">只替换、删除或调整相关节点，并告诉你变化在哪里。</p>
+      <p class="transport-note">我会尽量只改相关节点，不重生成整篇攻略。</p>
+      <section class="nl-adjust-box" aria-label="自然语言调整入口">
+        <textarea class="nl-adjust-input" data-field="naturalAdjust" placeholder="例如：我想少排队一点 / 不要咖啡 / 现在只剩2小时"></textarea>
+        <button class="primary nl-adjust-submit" data-action="submitNaturalAdjust">提交调整</button>
+      </section>
       <div class="quick-grid drawer-grid">
         ${mockRouteData.adjustmentButtons
           .map((button) => `<button class="quick-btn ${state.activeAdjustment === button.type ? "active" : ""}" data-action="adjust" data-type="${button.type}">${button.label}</button>`)
           .join("")}
       </div>
-      ${state.diff ? renderDiffCard(state.diff) : ""}
+      ${hasDiffRows ? renderDiffCard(state.diff) : ""}
     </aside>
   `;
 }
 
 function renderDiffCard(diff) {
+  const rows = safeArray(diff?.rows);
+  if (!rows.length) return "";
   return `
     <section class="diff-card drawer-diff">
-      <h3>${diff.title}</h3>
-      <p class="diff-subtitle">${diff.action}</p>
+      <h3>${displayText(diff.title, "调整结果")}</h3>
+      <p class="diff-subtitle">${displayText(diff.action, "已完成局部调整。")}</p>
       <div class="diff-list">
-        ${diff.rows.map((row) => `<div class="diff-row"><span>${row.label}</span><span>${row.value}</span></div>`).join("")}
+        ${rows.map((row) => `<div class="diff-row"><span>${displayText(row.label, "")}</span><span>${displayText(row.value, "")}</span></div>`).join("")}
       </div>
       <div class="diff-actions">
         <button class="primary" data-action="acceptRoute">采用新方案</button>
@@ -1165,6 +1239,12 @@ function bindEvents() {
   document.querySelectorAll("[data-action]").forEach((element) => {
     element.addEventListener("click", handleAction);
   });
+  document.querySelectorAll(".poi-card").forEach((card) => {
+    card.addEventListener("click", (event) => {
+      if (event.target.closest("[data-action]")) return;
+      setState({ selectedNodeId: card.dataset.id });
+    });
+  });
   const textarea = document.querySelector("[data-field='intent']");
   if (textarea) {
     textarea.addEventListener("input", (event) => {
@@ -1180,6 +1260,9 @@ function handleAction(event) {
 
   if (action === "toggleMic") setState({ micActive: !state.micActive });
   if (action === "useExample") setState({ inputText: target.dataset.value || mockRouteData.input.defaultText });
+  if (action === "submitNaturalAdjust") {
+    showToast("自然语言调整入口已预留，真实接入将在 /api/chat-route 契约确认后完成");
+  }
   if (action === "togglePreference") {
     const value = target.dataset.value;
     const exists = state.selectedPreferences.includes(value);
@@ -1203,11 +1286,6 @@ function handleAction(event) {
   }
   if (action === "selectNode") {
     setState({ selectedNodeId: id });
-    if (state.activeTab === "places") {
-      window.setTimeout(() => {
-        document.querySelector(`.poi-card[data-id="${id}"]`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      }, 40);
-    }
   }
   if (action === "openDrawer") setState({ drawerOpen: true });
   if (action === "closeDrawer") setState({ drawerOpen: false });

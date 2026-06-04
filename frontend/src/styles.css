@@ -880,7 +880,24 @@ textarea:focus {
   position: relative;
   height: 112px;
   overflow: hidden;
+  border-radius: 0 0 18px 18px;
   background: linear-gradient(135deg, #dcefe9, #fff0d5);
+}
+
+.poi-visual img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.poi-visual.image-failed {
+  background: linear-gradient(135deg, #dcefe9, #fff0d5);
+}
+
+.poi-visual.image-failed img {
+  display: none;
 }
 
 .poi-visual.scenic {
@@ -908,13 +925,15 @@ textarea:focus {
   position: absolute;
   left: 12px;
   top: 12px;
+  z-index: 2;
   display: grid;
   width: 34px;
   height: 34px;
   place-items: center;
   border-radius: 50%;
   color: #fff;
-  background: var(--green);
+  background: rgba(35, 139, 114, 0.94);
+  box-shadow: 0 8px 18px rgba(30, 55, 48, 0.2);
   font-weight: 950;
 }
 
@@ -1368,8 +1387,10 @@ textarea:focus {
   font-size: 13px;
 }
 
-.compact-timeline .timeline-item {
-  cursor: pointer;
+.empty-note {
+  margin-top: 8px;
+  color: #66706b;
+  font-size: 13px;
 }
 
 .compact-timeline .timeline-body p {
@@ -1446,11 +1467,11 @@ textarea:focus {
   bottom: 0;
   z-index: 31;
   width: min(100%, 460px);
-  max-height: min(78vh, 650px);
+  max-height: min(84vh, 680px);
   overflow-y: auto;
   transform: translateX(-50%);
   border-radius: 26px 26px 0 0;
-  padding: 10px 16px calc(18px + env(safe-area-inset-bottom));
+  padding: 10px 16px calc(22px + env(safe-area-inset-bottom));
   background: var(--paper);
   box-shadow: 0 -22px 50px rgba(42, 34, 24, 0.22);
 }
@@ -1475,6 +1496,42 @@ textarea:focus {
 
 .drawer-grid {
   margin-top: 12px;
+}
+
+.nl-adjust-box {
+  display: grid;
+  gap: 9px;
+  margin-top: 12px;
+  border-radius: 22px;
+  padding: 10px;
+  background: rgba(255, 253, 248, 0.82);
+  box-shadow: inset 0 0 0 1px rgba(224, 207, 181, 0.68);
+}
+
+.nl-adjust-input {
+  min-height: 74px;
+  resize: none;
+  border: 0;
+  border-radius: 18px;
+  outline: none;
+  padding: 12px 13px;
+  color: var(--ink);
+  background: #fffefa;
+  box-shadow: inset 0 0 0 1px rgba(217, 226, 220, 0.88);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.nl-adjust-input:focus {
+  box-shadow:
+    inset 0 0 0 1px rgba(35, 139, 114, 0.55),
+    0 0 0 4px rgba(35, 139, 114, 0.1);
+}
+
+.nl-adjust-submit {
+  min-height: 44px;
+  margin-top: 0;
+  box-shadow: 0 10px 18px rgba(240, 120, 47, 0.2);
 }
 
 .drawer-diff {
