@@ -4,9 +4,12 @@ import json
 import subprocess
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
-from backend.app import TextRequest, chat_route, generate_route, platform_health
+from fastapi import HTTPException
+
+from backend.app import CHAT_ROUTE_REQUESTS, TextRequest, _enforce_chat_route_rate_limit, chat_route, generate_route, platform_health
 from backend.llm_client import call_llm_for_intent
 from backend.intent_parser import parse_intent
 
@@ -181,10 +184,30 @@ class LLMConfigTest(unittest.TestCase):
         self.assertIn("LLM_MODEL=your_model_here\n", content)
         self.assertIn("LLM_PROVIDER=openai_compatible\n", content)
         self.assertIn("LLM_ENABLED=false\n", content)
+        self.assertIn("FRONTEND_ORIGIN=http://localhost:3000\n", content)
+        self.assertIn("ENABLE_DOCS=true\n", content)
         self.assertNotIn("sk-", content)
 
     def test_platform_health_endpoint_payload(self) -> None:
         self.assertEqual(platform_health(), {"status": "ok"})
+
+    def test_chat_route_rate_limit_returns_429_after_ten_requests_per_ip(self) -> None:
+        CHAT_ROUTE_REQUESTS.clear()
+        request = SimpleNamespace(headers={"x-forwarded-for": "203.0.113.10"}, client=SimpleNamespace(host="127.0.0.1"))
+        for _ in range(10):
+            _enforce_chat_route_rate_limit(request)
+
+        with self.assertRaises(HTTPException) as error:
+            _enforce_chat_route_rate_limit(request)
+        self.assertEqual(error.exception.status_code, 429)
+        CHAT_ROUTE_REQUESTS.clear()
+
+    def test_health_is_not_rate_limited(self) -> None:
+        CHAT_ROUTE_REQUESTS.clear()
+        for _ in range(12):
+            self.assertEqual(platform_health(), {"status": "ok"})
+        self.assertEqual(CHAT_ROUTE_REQUESTS, {})
+        CHAT_ROUTE_REQUESTS.clear()
 
 
 if __name__ == "__main__":

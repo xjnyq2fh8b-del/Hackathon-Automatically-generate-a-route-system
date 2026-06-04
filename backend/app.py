@@ -1,8 +1,10 @@
+import os
+import time
 from copy import deepcopy
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -11,11 +13,39 @@ from backend.poi_catalog import load_poi_catalog_or_fallback, to_frontend_places
 from backend.route_planner import RoutePlannerError, generate_adjusted_route, generate_default_route
 
 
-app = FastAPI(title="Westlake Route Agent API")
+TRUE_VALUES = {"1", "true", "yes", "on"}
+CHAT_ROUTE_RATE_LIMIT = 10
+CHAT_ROUTE_RATE_WINDOW_SECONDS = 60
+CHAT_ROUTE_REQUESTS: dict[str, list[float]] = {}
+
+
+def _env_enabled(name: str, default: str = "true") -> bool:
+    return os.getenv(name, default).strip().lower() in TRUE_VALUES
+
+
+def _docs_path(path: str) -> str | None:
+    return path if _env_enabled("ENABLE_DOCS", "true") else None
+
+
+def _allowed_origins() -> list[str]:
+    origins = ["http://localhost:3000"]
+    frontend_origin = os.getenv("FRONTEND_ORIGIN", "").strip()
+    if frontend_origin:
+        origins.append(frontend_origin)
+    # Before public deployment, set FRONTEND_ORIGIN to the production frontend URL.
+    return origins
+
+
+app = FastAPI(
+    title="Westlake Route Agent API",
+    docs_url=_docs_path("/docs"),
+    redoc_url=_docs_path("/redoc"),
+    openapi_url=_docs_path("/openapi.json"),
+)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_allowed_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -520,6 +550,29 @@ def _message_diff(title: str, action: str) -> dict:
     return {"title": title, "action": action, "rows": [{"label": "说明", "value": action}]}
 
 
+def _client_ip(request: Request | None) -> str:
+    if request is None:
+        return "local-test"
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    if forwarded_for:
+        return forwarded_for.split(",", 1)[0].strip() or "unknown"
+    if request.client:
+        return request.client.host
+    return "unknown"
+
+
+def _enforce_chat_route_rate_limit(request: Request | None) -> None:
+    ip = _client_ip(request)
+    now = time.monotonic()
+    window_start = now - CHAT_ROUTE_RATE_WINDOW_SECONDS
+    recent_requests = [sent_at for sent_at in CHAT_ROUTE_REQUESTS.get(ip, []) if sent_at > window_start]
+    if len(recent_requests) >= CHAT_ROUTE_RATE_LIMIT:
+        CHAT_ROUTE_REQUESTS[ip] = recent_requests
+        raise HTTPException(status_code=429, detail="Too many requests")
+    recent_requests.append(now)
+    CHAT_ROUTE_REQUESTS[ip] = recent_requests
+
+
 @app.get("/api/health")
 def health() -> dict:
     return {"message": "服务正常"}
@@ -550,6 +603,11 @@ def generate_route(request: TextRequest) -> dict:
 
 
 @app.post("/api/chat-route")
+def chat_route_endpoint(request: TextRequest, http_request: Request) -> dict:
+    _enforce_chat_route_rate_limit(http_request)
+    return chat_route(request)
+
+
 def chat_route(request: TextRequest) -> dict:
     intent = parse_intent(request.input_text())
     adjustment_type = intent.get("adjustmentType") if intent.get("intent") == "adjustRoute" else None

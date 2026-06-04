@@ -16,3 +16,7 @@ services:
         value: openai_compatible
       - key: LLM_ENABLED
         value: "true"
+      - key: FRONTEND_ORIGIN
+        sync: false
+      - key: ENABLE_DOCS
+        value: "false"
