@@ -367,6 +367,7 @@ let state = {
   drawerOpen: false,
   transportOpen: false,
   expandedNodes: [],
+  expandedDetails: [],
   activeAdjustment: null,
   naturalAdjustText: "",
   naturalAdjustLoading: false,
@@ -1060,14 +1061,12 @@ function renderResult() {
   return `
     <section class="screen result task-screen tab-${state.activeTab}">
       <div class="route-brief">${displayText(getConstraintSummary(), "当前约束待确认")}</div>
-      ${renderSummary(route)}
       ${renderNextAction(route)}
-      ${renderAgentAdjustEntry()}
+      ${renderSummary(route)}
       ${renderTabs()}
       <section class="tab-body">
         ${state.activeTab === "route" ? renderRouteTab(route) : ""}
         ${state.activeTab === "map" ? renderMap(route, "large") : ""}
-        ${state.activeTab === "places" ? renderPoiCards(route) : ""}
       </section>
       ${renderBottomBar(route)}
       ${renderDrawer()}
@@ -1106,27 +1105,23 @@ function renderNextAction(route) {
       <span>下一步行动</span>
       <h3>下一站：${displayText(nextName, "下一站待确认")}</h3>
       <p>从${displayText(currentName, "当前位置")}${displayText(method, "交通方式待确认")}${displayText(duration, "")}，预计${displayText(arrive, "到达时间待确认")}到达。</p>
+      <div class="next-adjust-row">
+        <strong>现场变了？</strong>
+        <div>
+          <button data-action="openDrawer">少排队</button>
+          <button data-action="openDrawer">不要咖啡</button>
+          <button data-action="openDrawer">只剩2小时</button>
+          <button data-action="openDrawer">说一句改</button>
+        </div>
+      </div>
     </section>
-  `;
-}
-
-function renderAgentAdjustEntry() {
-  return `
-    <button class="agent-adjust-entry" data-action="openDrawer">
-      <span>
-        <strong>现场变了？直接说一句改路线</strong>
-        <em>例如：少排队一点 / 不要咖啡 / 只剩2小时</em>
-      </span>
-      <b>去修改</b>
-    </button>
   `;
 }
 
 function renderTabs() {
   const tabs = [
-    ["route", "路线"],
+    ["route", "行程"],
     ["map", "地图"],
-    ["places", "地点"],
   ];
   return `
     <nav class="route-tabs" aria-label="路线视图切换">
@@ -1201,11 +1196,12 @@ function renderTimeline(route) {
   const nodes = safeArray(route.nodes);
   return `
     <section class="card">
-      <div class="section-head"><h3>今天怎么走</h3><span class="summary-label">行动指令</span></div>
+      <div class="section-head"><h3>今天怎么走</h3><span class="summary-label">行程中可调整</span></div>
       <div class="timeline compact-timeline">
         ${nodes
           .map((node, index) => {
-            const expanded = state.expandedNodes.includes(node.id);
+            const reasonExpanded = state.expandedNodes.includes(node.id);
+            const detailExpanded = state.expandedDetails.includes(node.id);
             return `
               <article class="timeline-item ${node.id === state.selectedNodeId ? "active" : ""}">
                 <div class="timebox"><strong>${displayText(node.arrive, "--:--")}</strong><span>${displayText(node.leave, "--:--")} 离开</span><div class="node-dot">${index + 1}</div></div>
@@ -1213,8 +1209,12 @@ function renderTimeline(route) {
                   <h4>${displayText(node.name, "地点待确认")}</h4>
                   <div class="type-line">${displayText(typeIcon[node.type], "点")} · ${displayText(typeText[node.type], "类型待确认")}</div>
                   ${node.next ? `<div class="next-step">下一段：${displayText(node.next, "交通信息待确认")}</div>` : `<div class="next-step">路线结束，湖滨商圈方便离开。</div>`}
-                  <button class="detail-toggle" data-action="toggleNodeDetail" data-id="${node.id}">${expanded ? "收起说明" : "查看理由"}</button>
-                  ${expanded ? `<p>${displayText(node.reason, "推荐理由待确认")}</p>${node.note ? `<div class="notice">${displayText(node.note, "")}</div>` : ""}` : ""}
+                  <div class="timeline-tools">
+                    <button class="detail-toggle" data-action="toggleNodeDetail" data-id="${node.id}">${reasonExpanded ? "收起理由" : "查看理由"}</button>
+                    <button class="detail-toggle ghost" data-action="togglePlaceDetail" data-id="${node.id}">${detailExpanded ? "收起详情" : "地点详情"}</button>
+                  </div>
+                  ${reasonExpanded ? `<p>${displayText(node.reason, "推荐理由待确认")}</p>${node.note ? `<div class="notice">${displayText(node.note, "")}</div>` : ""}` : ""}
+                  ${detailExpanded ? renderInlinePoiDetail(node, index, nodes.length) : ""}
                 </div>
               </article>
             `;
@@ -1222,6 +1222,21 @@ function renderTimeline(route) {
           .join("")}
       </div>
     </section>
+  `;
+}
+
+function renderInlinePoiDetail(node, index, total) {
+  return `
+    <div class="itinerary-place-detail">
+      ${renderPoiVisual(node, index)}
+      <div class="poi-content">
+        <div class="poi-meta"><span class="poi-type">${displayText(typeText[node.type], "类型待确认")}</span><span class="poi-score">评分 ${displayText(node.rating, "暂无评分")}</span></div>
+        <p>${displayText(node.address, "地址待确认")}</p>
+        <div class="mini-grid"><div class="mini"><strong>开放时间</strong>${displayText(node.openHours, "营业时间待确认")}</div><div class="mini"><strong>价格</strong>${displayText(node.price, "价格待确认")}</div></div>
+        <div class="small-tags">${safeArray(node.tags).map((tag) => `<span>${displayText(tag, "")}</span>`).join("")}</div>
+        ${renderPoiActions(node, index, total)}
+      </div>
+    </div>
   `;
 }
 
@@ -1396,6 +1411,16 @@ function handleAction(event) {
       expandedNodes: exists
         ? state.expandedNodes.filter((item) => item !== id)
         : [...state.expandedNodes, id],
+    });
+  }
+  if (action === "togglePlaceDetail") {
+    event.stopPropagation();
+    const exists = state.expandedDetails.includes(id);
+    setStatePreservingScroll({
+      expandedDetails: exists
+        ? state.expandedDetails.filter((item) => item !== id)
+        : [...state.expandedDetails, id],
+      selectedNodeId: id,
     });
   }
   if (action === "selectNode") {
