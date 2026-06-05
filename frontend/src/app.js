@@ -1,6 +1,14 @@
 const app = document.querySelector("#app");
-const API_BASE_URL = "http://127.0.0.1:8000";
+const API_BASE_URL = (window.ROUTE_AGENT_CONFIG?.API_BASE_URL || "https://route-backend-amyh.onrender.com").replace(/\/$/, "");
 const USE_BACKEND_API = true;
+
+const adjustmentMessageByType = {
+  restaurantBusy: "餐厅排队太久，帮我换一个不用等太久的餐厅",
+  budget100: "预算降到100，帮我重新规划一条人均100以内的路线",
+  noCoffee: "不想喝咖啡，帮我删掉咖啡相关安排并保持路线顺路",
+  twoHours: "现在只剩2小时，帮我压缩成2小时内能走完的路线",
+  photo: "想更适合拍照，帮我调整成更适合拍照的路线",
+};
 
 // placeId fallback covers high-frequency demo POIs.
 const fallbackImageByPlaceId = {
@@ -8,15 +16,16 @@ const fallbackImageByPlaceId = {
   brokenBridge: "./assets/poi/broken-bridge.jpg",
   xinbailu: "./assets/poi/xinbailu.jpg",
   nongtangli: "./assets/poi/nongtangli.jpg",
-  photoPoint: "./assets/poi/beishan-street.jpg",
+  photoPoint: "./assets/poi/beishan-photo.jpg",
   convenienceRest: "./assets/poi/hubin-rest.jpg",
 };
 
 // type fallback covers new backend POIs or places without dedicated images.
 const fallbackImageByType = {
   start: "./assets/poi/in77.jpg",
-  scenic: "./assets/poi/beishan-street.jpg",
-  dinner: "./assets/poi/restaurant-fallback.jpg",
+  scenic: "./assets/poi/beishan-photo.jpg",
+  coffee: "./assets/poi/baita-coffee.jpg",
+  dinner: "./assets/poi/xinbailu.jpg",
   rest: "./assets/poi/hubin-rest.jpg",
 };
 
@@ -373,6 +382,8 @@ let state = {
   naturalAdjustLoading: false,
   constraints: mockRouteData.constraints,
   constraintSummary: "",
+  errorMessage: "",
+  lastRequestText: "",
   toast: "",
   hint: "",
 };
@@ -400,23 +411,24 @@ function getPlace(id) {
 }
 
 function resolveRoute(routeConfig) {
-  const timelineByPlace = Object.fromEntries(routeConfig.timeline.map((item) => [item.placeId, item]));
-  const transportSegments = routeConfig.transportSegments.map((segment) => {
+  const placeIds = safeArray(routeConfig.placeIds);
+  const timelineByPlace = Object.fromEntries(safeArray(routeConfig.timeline).map((item) => [item.placeId, item]));
+  const transportSegments = safeArray(routeConfig.transportSegments).map((segment) => {
     const from = placeById[segment.fromId];
     const to = placeById[segment.toId];
     return {
       ...clone(segment),
-      from: from.name,
-      to: to.name,
+      from: from?.name || "",
+      to: to?.name || "",
       arriveAt: timelineByPlace[segment.toId]?.arrive || "",
     };
   });
 
-  const nodes = routeConfig.placeIds.map((placeId, index) => {
+  const nodes = placeIds.map((placeId, index) => {
     const place = getPlace(placeId);
     const time = timelineByPlace[placeId] || {};
     const segment = transportSegments[index];
-    const nextPlace = routeConfig.placeIds[index + 1] ? placeById[routeConfig.placeIds[index + 1]] : null;
+    const nextPlace = placeIds[index + 1] ? placeById[placeIds[index + 1]] : null;
 
     return {
       ...place,
@@ -470,74 +482,56 @@ function adjustRouteLocal(adjustmentType, currentRoute, targetNodeId) {
 }
 
 async function generateRouteFromApi() {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/route/generate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: state.inputText }),
-    });
-    const data = await readApiResponse(response);
-    return applyRouteData(data.routeData).route;
-  } catch (error) {
-    console.error(error);
-    return null;
-  }
+  const result = await chatRouteFromApi(state.inputText);
+  return result.route;
 }
 
 async function adjustRouteFromApi(adjustmentType, currentRoute, targetNodeId) {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/route/adjust`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        adjustmentType,
-        nodeId: targetNodeId,
-        route: routeToConfig(currentRoute),
-      }),
-    });
-    const data = await readApiResponse(response);
-    return {
-      ...applyRouteData(data.routeData),
-      targetNodeId,
-    };
-  } catch (error) {
-    console.error(error);
-    showToast("Backend API unavailable");
-    return null;
-  }
+  const message = adjustmentMessageByType[adjustmentType] || "帮我根据当前情况调整路线";
+  const result = await chatRouteFromApi(message, currentRoute);
+  return {
+    ...result,
+    targetNodeId,
+  };
 }
 
 async function adjustRouteActionFromApi(action, currentRoute, targetNodeId) {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/route/adjust`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action,
-        nodeId: targetNodeId,
-        route: routeToConfig(currentRoute),
-      }),
-    });
-    const data = await readApiResponse(response);
-    return {
-      ...applyRouteData(data.routeData),
-      targetNodeId,
-    };
-  } catch (error) {
-    console.error(error);
-    showToast("Backend API unavailable");
-    return null;
-  }
+  const target = currentRoute?.nodes?.find((node) => node.id === targetNodeId);
+  const targetName = target?.name || "当前地点";
+  const messageByAction = {
+    replace: `帮我把${targetName}换成更合适的地点，并保持路线顺路`,
+    delete: `帮我删掉${targetName}，并重新规划剩下路线`,
+    moveUp: `帮我把${targetName}提前一点，并重新规划路线顺序`,
+    moveDown: `帮我把${targetName}往后放一点，并重新规划路线顺序`,
+  };
+  const result = await chatRouteFromApi(messageByAction[action] || "帮我调整当前路线", currentRoute);
+  return {
+    ...result,
+    targetNodeId,
+  };
 }
 
-function chatRouteFromApi(text, currentRoute) {
-  // TODO: Implement after the /api/chat-route request and response contract is confirmed.
-  // Do not guess request fields or response shape here.
-  return null;
+async function chatRouteFromApi(text, currentRoute) {
+  const message = String(text || "").trim();
+  if (!message) {
+    throw new Error("请输入你的出行需求");
+  }
+  const response = await fetch(`${API_BASE_URL}/api/chat-route`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message }),
+  });
+  const data = await readApiResponse(response);
+  return applyRouteData(data.routeData);
 }
 
 async function readApiResponse(response) {
-  const data = await response.json();
+  let data = null;
+  try {
+    data = await response.json();
+  } catch {
+    throw new Error("路线服务返回异常，请稍后重试");
+  }
   if (!response.ok) {
     throw new Error(data?.message || data?.detail || `API request failed: ${response.status}`);
   }
@@ -749,6 +743,7 @@ function showToast(message) {
 }
 
 function startGeneration() {
+  const requestText = state.inputText;
   setState({
     view: "loading",
     loadingStep: 0,
@@ -757,6 +752,8 @@ function startGeneration() {
     activeAdjustment: null,
     activeTab: "route",
     drawerOpen: false,
+    errorMessage: "",
+    lastRequestText: requestText,
   });
 
   [1, 2, 3].forEach((step, index) => {
@@ -764,19 +761,25 @@ function startGeneration() {
       if (step < 3) {
         setState({ loadingStep: step });
       } else {
-        const route = await generateRouteData();
-        if (!route) {
-          showToast("路线生成暂时不可用");
-          setState({ view: "input", loadingStep: 0 });
-          return;
+        try {
+          const route = await generateRouteData();
+          if (!route) throw new Error("路线生成失败了，请稍后重试。");
+          setState({
+            view: "result",
+            loadingStep: 3,
+            route,
+            selectedNodeId: route.nodes[0]?.id,
+            errorMessage: "",
+            hint: "",
+          });
+        } catch (error) {
+          console.error(error);
+          setState({
+            view: "input",
+            loadingStep: 0,
+            errorMessage: error?.message || "路线生成失败了，请稍后重试。",
+          });
         }
-        setState({
-          view: "result",
-          loadingStep: 3,
-          route,
-          selectedNodeId: route.nodes[0].id,
-          hint: "",
-        });
       }
     }, 520 + index * 620);
   });
@@ -785,35 +788,78 @@ function startGeneration() {
 async function applyAdjustment(type, targetNodeId) {
   if (!state.route) return;
   const previousRoute = clone(state.route);
-  const result = await adjustRouteData(type, state.route, targetNodeId);
-  if (!result) return;
+  setState({ naturalAdjustLoading: true, errorMessage: "" });
+  try {
+    const result = await adjustRouteData(type, state.route, targetNodeId);
+    if (!result) throw new Error("路线调整失败了，请稍后重试。");
+    setState({
+      previousRoute,
+      route: result.route,
+      diff: result.diff,
+      selectedNodeId: result.route.nodes[0]?.id,
+      activeAdjustment: type,
+      drawerOpen: true,
+      naturalAdjustLoading: false,
+      hint: result.route.hint || "",
+    });
+  } catch (error) {
+    console.error(error);
+    setState({ naturalAdjustLoading: false, errorMessage: error?.message || "路线调整失败了，请稍后重试。" });
+    showToast("路线调整失败了，请稍后重试。");
+  }
+}
 
-  setState({
-    previousRoute,
-    route: result.route,
-    diff: result.diff,
-    selectedNodeId: result.route.nodes[0]?.id,
-    activeAdjustment: type,
-    drawerOpen: true,
-    hint: result.route.hint || "",
-  });
+async function submitNaturalAdjustment() {
+  const message = state.naturalAdjustText.trim();
+  if (!message) {
+    showToast("请先输入想怎么调整");
+    return;
+  }
+  const previousRoute = state.route ? clone(state.route) : null;
+  setState({ naturalAdjustLoading: true, errorMessage: "" });
+  try {
+    const result = await chatRouteFromApi(message, state.route);
+    setState({
+      previousRoute,
+      route: result.route,
+      diff: result.diff,
+      selectedNodeId: result.route.nodes[0]?.id,
+      activeAdjustment: null,
+      drawerOpen: true,
+      naturalAdjustText: "",
+      naturalAdjustLoading: false,
+      view: "result",
+      hint: result.route.hint || "",
+    });
+  } catch (error) {
+    console.error(error);
+    setState({ naturalAdjustLoading: false, errorMessage: error?.message || "路线调整失败了，请稍后重试。" });
+    showToast("路线调整失败了，请稍后重试。");
+  }
 }
 
 async function applyNodeAction(action, targetNodeId) {
   if (!state.route) return;
   const previousRoute = clone(state.route);
-  const result = await adjustRouteActionFromApi(action, state.route, targetNodeId);
-  if (!result) return;
-
-  setState({
-    previousRoute,
-    route: result.route,
-    diff: result.diff,
-    selectedNodeId: action === "delete" ? result.route.nodes[0]?.id : targetNodeId,
-    activeAdjustment: null,
-    drawerOpen: true,
-    hint: result.route.hint || "",
-  });
+  setState({ naturalAdjustLoading: true, errorMessage: "" });
+  try {
+    const result = await adjustRouteActionFromApi(action, state.route, targetNodeId);
+    if (!result) throw new Error("路线调整失败了，请稍后重试。");
+    setState({
+      previousRoute,
+      route: result.route,
+      diff: result.diff,
+      selectedNodeId: action === "delete" ? result.route.nodes[0]?.id : targetNodeId,
+      activeAdjustment: null,
+      drawerOpen: true,
+      naturalAdjustLoading: false,
+      hint: result.route.hint || "",
+    });
+  } catch (error) {
+    console.error(error);
+    setState({ naturalAdjustLoading: false, errorMessage: error?.message || "路线调整失败了，请稍后重试。" });
+    showToast("路线调整失败了，请稍后重试。");
+  }
 }
 
 function moveNode(id, direction) {
@@ -995,6 +1041,7 @@ function renderInput() {
               .join("")}
           </div>
         </div>
+        ${renderErrorPanel()}
         <button class="primary input-primary" data-action="generate">生成现在能走的路线</button>
       </section>
     </section>
@@ -1030,6 +1077,7 @@ function renderLegacyInput() {
             .join("")}
         </div>
         <button class="primary" data-action="generate">生成可执行路线</button>
+        ${renderErrorPanel()}
       </section>
     </section>
     ${renderToast()}
@@ -1042,7 +1090,8 @@ function renderLoading() {
     <section class="loading-screen">
       <div class="loading-card panel">
         <div class="pulse-route"><span class="pulse-dot one"></span><span class="pulse-dot two"></span></div>
-        <div class="loading-title">正在把需求串成路线</div>
+        <div class="loading-title">正在规划一条现在就能出发的路线...</div>
+        <p class="loading-subtitle">路线服务如果刚启动，可能需要十几秒，请稍等。</p>
         <div class="steps">
           ${steps
             .map((step, index) => {
@@ -1327,7 +1376,7 @@ function renderDrawer() {
       <p class="transport-note">我会尽量只改相关节点，不重生成整篇攻略。</p>
       <section class="nl-adjust-box" aria-label="自然语言调整入口">
         <textarea class="nl-adjust-input" data-field="naturalAdjust" placeholder="例如：我想少排队一点 / 不要咖啡 / 现在只剩2小时">${escapeHtml(state.naturalAdjustText)}</textarea>
-        <button class="primary nl-adjust-submit" data-action="submitNaturalAdjust">${state.naturalAdjustLoading ? "发送中" : "发送"}</button>
+        <button class="primary nl-adjust-submit" data-action="submitNaturalAdjust" ${state.naturalAdjustLoading ? "disabled" : ""}>${state.naturalAdjustLoading ? "发送中" : "发送"}</button>
       </section>
       <div class="quick-head">
         <strong>快捷调整</strong>
@@ -1335,7 +1384,7 @@ function renderDrawer() {
       </div>
       <div class="quick-grid drawer-grid">
         ${mockRouteData.adjustmentButtons
-          .map((button) => `<button class="quick-btn ${state.activeAdjustment === button.type ? "active" : ""}" data-action="adjust" data-type="${button.type}">${button.label}</button>`)
+          .map((button) => `<button class="quick-btn ${state.activeAdjustment === button.type ? "active" : ""}" data-action="adjust" data-type="${button.type}" ${state.naturalAdjustLoading ? "disabled" : ""}>${button.label}</button>`)
           .join("")}
       </div>
       ${hasDiffRows ? renderDiffCard(state.diff) : ""}
@@ -1363,6 +1412,17 @@ function renderDiffCard(diff) {
 
 function renderToast() {
   return `<div class="toast ${state.toast ? "show" : ""}">${state.toast}</div>`;
+}
+
+function renderErrorPanel() {
+  if (!state.errorMessage) return "";
+  return `
+    <section class="error-panel" role="alert">
+      <strong>路线生成失败了，请稍后重试。</strong>
+      <p>${displayText(state.errorMessage, "暂时连接不上路线服务，请检查网络后重试。")}</p>
+      <button class="secondary" data-action="retryGenerate">重新规划</button>
+    </section>
+  `;
 }
 
 function bindEvents() {
@@ -1397,7 +1457,11 @@ function handleAction(event) {
   if (action === "toggleMic") setState({ micActive: !state.micActive });
   if (action === "useExample") setState({ inputText: target.dataset.value || mockRouteData.input.defaultText });
   if (action === "submitNaturalAdjust") {
-    showToast("/api/chat-route 契约确认后即可接入自然语言调整");
+    submitNaturalAdjustment();
+  }
+  if (action === "retryGenerate") {
+    setState({ inputText: state.lastRequestText || state.inputText, errorMessage: "" });
+    startGeneration();
   }
   if (action === "togglePreference") {
     const value = target.dataset.value;

@@ -40,5 +40,5 @@ createServer(async (request, response) => {
     response.end("Not found");
   }
 }).listen(port, () => {
-  console.log(`Westlake route demo: http://localhost:${port}`);
+  console.log(`Westlake route demo is running on port ${port}`);
 });
