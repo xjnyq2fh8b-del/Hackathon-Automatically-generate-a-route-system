@@ -40,7 +40,7 @@ def _docs_path(path: str) -> str | None:
 
 
 def _allowed_origins() -> list[str]:
-    origins = ["http://localhost:3000"]
+    origins = ["http://localhost:3000", "http://localhost:4173"]
     frontend_origin = os.getenv("FRONTEND_ORIGIN", "").strip()
     if frontend_origin:
         origins.append(frontend_origin)
@@ -59,8 +59,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins(),
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["POST", "OPTIONS"],
+    allow_headers=["Content-Type", "X-Demo-Token"],
 )
 
 

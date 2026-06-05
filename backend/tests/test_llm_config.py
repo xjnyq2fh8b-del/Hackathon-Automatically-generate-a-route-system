@@ -17,6 +17,7 @@ from backend.app import (
     _enforce_daily_llm_limit,
     _enforce_demo_token,
     _enforce_message_length,
+    _allowed_origins,
     chat_route,
     generate_route,
     platform_health,
@@ -201,7 +202,7 @@ class LLMConfigTest(unittest.TestCase):
         self.assertIn("LLM_TIMEOUT_SECONDS=10\n", content)
         self.assertIn("LLM_MAX_COMPLETION_TOKENS=500\n", content)
         self.assertIn("LLM_DAILY_REQUEST_LIMIT=200\n", content)
-        self.assertIn("FRONTEND_ORIGIN=http://localhost:3000\n", content)
+        self.assertIn("FRONTEND_ORIGIN=https://your-frontend-domain.example\n", content)
         self.assertIn("ENABLE_DOCS=true\n", content)
         self.assertIn("CHAT_ROUTE_MAX_MESSAGE_CHARS=500\n", content)
         self.assertIn("DEMO_ACCESS_TOKEN=\n", content)
@@ -209,6 +210,13 @@ class LLMConfigTest(unittest.TestCase):
 
     def test_platform_health_endpoint_payload(self) -> None:
         self.assertEqual(platform_health(), {"status": "ok"})
+
+    def test_cors_allows_local_vite_and_frontend_origin(self) -> None:
+        with patch.dict("os.environ", {"FRONTEND_ORIGIN": "https://frontend.example.com"}, clear=False):
+            origins = _allowed_origins()
+        self.assertIn("http://localhost:3000", origins)
+        self.assertIn("http://localhost:4173", origins)
+        self.assertIn("https://frontend.example.com", origins)
 
     def test_chat_route_rate_limit_returns_429_after_ten_requests_per_ip(self) -> None:
         CHAT_ROUTE_REQUESTS.clear()
