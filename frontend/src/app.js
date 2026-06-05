@@ -1114,15 +1114,6 @@ function renderNextAction(route) {
         <span>${displayText(method, "交通方式待确认")}${displayText(duration, "")}</span>
         <span>${displayText(arrive, "到达时间待确认")} 到达</span>
       </div>
-      <div class="next-adjust-row">
-        <strong>现场变了？</strong>
-        <div>
-          <button data-action="openDrawer">少排队</button>
-          <button data-action="openDrawer">不要咖啡</button>
-          <button data-action="openDrawer">只剩2小时</button>
-          <button data-action="openDrawer">说一句改</button>
-        </div>
-      </div>
     </section>
   `;
 }
@@ -1445,7 +1436,7 @@ function handleAction(event) {
   if (action === "openDrawer") setState({ drawerOpen: true });
   if (action === "closeDrawer") setState({ drawerOpen: false });
   if (action === "adjust") applyAdjustment(target.dataset.type, state.selectedNodeId);
-  if (action === "followRoute") showToast("已进入路线执行视图");
+  if (action === "followRoute") showToast("高德导航即将接入；当前可按路线顺序前往下一站。");
   if (action === "moveNodeUp") moveNode(id, -1);
   if (action === "moveNodeDown") moveNode(id, 1);
   if (action === "deleteNode") deleteNode(id);

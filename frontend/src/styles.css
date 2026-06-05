@@ -1269,17 +1269,17 @@ textarea:focus {
 .next-card {
   position: relative;
   display: grid;
-  gap: 12px;
+  gap: 11px;
   margin-top: 10px;
   overflow: hidden;
   border: 1px solid rgba(22, 117, 94, 0.42);
-  border-radius: 28px;
-  padding: 18px;
+  border-radius: 22px;
+  padding: 16px;
   color: #fff;
   background:
     radial-gradient(circle at 92% 12%, rgba(255, 255, 255, 0.32), transparent 28%),
-    linear-gradient(135deg, #1f8069, #2fa17d 62%, #e97833);
-  box-shadow: 0 20px 44px rgba(35, 139, 114, 0.24);
+    linear-gradient(135deg, #1f8069, #299174 72%, #d97936);
+  box-shadow: 0 14px 30px rgba(35, 139, 114, 0.18);
 }
 
 .next-card::after {
@@ -1333,7 +1333,7 @@ textarea:focus {
 .next-card h3 {
   margin: 0;
   color: #fff;
-  font-size: 25px;
+  font-size: 22px;
   line-height: 1.18;
 }
 
@@ -1347,46 +1347,13 @@ textarea:focus {
 
 .next-route-line span {
   min-width: 0;
-  border-radius: 16px;
-  padding: 9px 10px;
+  border-radius: 14px;
+  padding: 8px 10px;
   color: #fff;
   background: rgba(255, 255, 255, 0.16);
   font-size: 13px;
   font-weight: 900;
   text-align: center;
-}
-
-.next-adjust-row {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  gap: 8px;
-  margin-top: 2px;
-  border-top: 1px solid rgba(255, 255, 255, 0.22);
-  padding-top: 11px;
-}
-
-.next-adjust-row strong {
-  color: rgba(255, 255, 255, 0.86);
-  font-size: 12px;
-  font-weight: 950;
-}
-
-.next-adjust-row div {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-}
-
-.next-adjust-row button {
-  min-height: 32px;
-  border: 0;
-  border-radius: 999px;
-  padding: 7px 10px;
-  color: #fff;
-  background: rgba(255, 255, 255, 0.18);
-  font-size: 12px;
-  font-weight: 900;
 }
 
 .agent-adjust-entry {
