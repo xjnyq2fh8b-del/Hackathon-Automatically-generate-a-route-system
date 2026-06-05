@@ -1283,14 +1283,17 @@ function renderPoiCards(route) {
 function renderPoiActions(node, index, total) {
   const isStart = node.type === "start" || index === 0;
   if (isStart) return "";
-  const actions = [
-    `<button class="small-btn primary-mini" data-action="replaceNode" data-id="${node.id}">换一个</button>`,
+  const secondaryActions = [
     `<button class="small-btn" data-action="deleteNode" data-id="${node.id}">删掉</button>`,
     index > 1 ? `<button class="small-btn" data-action="moveNodeUp" data-id="${node.id}">提前</button>` : "",
     index < total - 1 ? `<button class="small-btn" data-action="moveNodeDown" data-id="${node.id}">往后</button>` : "",
   ].filter(Boolean);
-  if (!actions.length) return "";
-  return `<div class="poi-actions">${actions.join("")}</div>`;
+  return `
+    <div class="poi-actions">
+      <button class="small-btn primary-mini" data-action="replaceNode" data-id="${node.id}">换一个</button>
+      <div class="poi-secondary-actions">${secondaryActions.join("")}</div>
+    </div>
+  `;
 }
 
 function renderPoiVisual(node, index) {

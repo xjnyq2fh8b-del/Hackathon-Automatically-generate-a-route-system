@@ -1033,21 +1033,41 @@ textarea:focus {
 }
 
 .poi-actions {
+  display: grid;
+  grid-template-columns: minmax(108px, 0.95fr) minmax(0, 1.55fr);
+  align-items: center;
+  gap: 8px;
   margin-top: 11px;
 }
 
+.poi-secondary-actions {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 7px;
+}
+
 .small-btn {
-  flex: 1 1 68px;
   min-width: 0;
+  min-height: 40px;
+  border: 0;
+  border-radius: 999px;
   padding: 9px 8px;
   color: #43504b;
-  background: #eee7dc;
+  background: rgba(238, 231, 220, 0.82);
   font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
 }
 
 .small-btn.primary-mini {
   color: #fff;
   background: var(--green);
+}
+
+.poi-secondary-actions .small-btn {
+  color: #5f5a50;
+  background: rgba(238, 231, 220, 0.68);
 }
 
 .quick-grid {
