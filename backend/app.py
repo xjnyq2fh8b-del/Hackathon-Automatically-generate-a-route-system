@@ -40,7 +40,7 @@ def _docs_path(path: str) -> str | None:
 
 
 def _allowed_origins() -> list[str]:
-    origins = ["http://localhost:3000", "http://localhost:4173"]
+    origins = ["http://localhost:3000", "http://localhost:4173", "https://cityroutemate.netlify.app"]
     frontend_origin = os.getenv("FRONTEND_ORIGIN", "").strip()
     if frontend_origin:
         origins.append(frontend_origin)

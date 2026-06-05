@@ -216,6 +216,7 @@ class LLMConfigTest(unittest.TestCase):
             origins = _allowed_origins()
         self.assertIn("http://localhost:3000", origins)
         self.assertIn("http://localhost:4173", origins)
+        self.assertIn("https://cityroutemate.netlify.app", origins)
         self.assertIn("https://frontend.example.com", origins)
 
     def test_chat_route_rate_limit_returns_429_after_ten_requests_per_ip(self) -> None:
