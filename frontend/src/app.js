@@ -1102,9 +1102,18 @@ function renderNextAction(route) {
   const arrive = next.arrive || "到达时间待确认";
   return `
     <section class="card next-card">
-      <span>下一步行动</span>
-      <h3>下一站：${displayText(nextName, "下一站待确认")}</h3>
-      <p>从${displayText(currentName, "当前位置")}${displayText(method, "交通方式待确认")}${displayText(duration, "")}，预计${displayText(arrive, "到达时间待确认")}到达。</p>
+      <div class="next-card-head">
+        <span>下一步行动</span>
+        <b>现在执行</b>
+      </div>
+      <div class="next-instruction">
+        <small>从 ${displayText(currentName, "当前位置")} 出发</small>
+        <h3>去 ${displayText(nextName, "下一站待确认")}</h3>
+      </div>
+      <div class="next-route-line">
+        <span>${displayText(method, "交通方式待确认")}${displayText(duration, "")}</span>
+        <span>${displayText(arrive, "到达时间待确认")} 到达</span>
+      </div>
       <div class="next-adjust-row">
         <strong>现场变了？</strong>
         <div>
@@ -1135,13 +1144,6 @@ function renderTabs() {
 function renderRouteTab(route) {
   return `
     <div class="hint ${state.hint ? "show" : ""}">${state.hint}</div>
-    <section class="card transport-compact">
-      <button class="transport-toggle" data-action="toggleTransport">
-        <span>完整交通方案</span>
-        <strong>${state.transportOpen ? "收起" : "展开"}</strong>
-      </button>
-      ${state.transportOpen ? renderTransportList(route) : `<p>${displayText(route.transportSummary, "交通方案待确认")}</p>`}
-    </section>
     ${renderTimeline(route)}
   `;
 }
@@ -1195,8 +1197,9 @@ function renderMap(route, mode) {
 function renderTimeline(route) {
   const nodes = safeArray(route.nodes);
   return `
-    <section class="card">
+    <section class="card itinerary-card">
       <div class="section-head"><h3>今天怎么走</h3><span class="summary-label">行程中可调整</span></div>
+      <div class="itinerary-transport-note">${renderTransportBrief(route)}</div>
       <div class="timeline compact-timeline">
         ${nodes
           .map((node, index) => {
@@ -1223,6 +1226,16 @@ function renderTimeline(route) {
       </div>
     </section>
   `;
+}
+
+function renderTransportBrief(route) {
+  const durations = safeArray(route.transportSegments)
+    .map((segment) => Number(String(segment.duration || "").match(/\d+/)?.[0]))
+    .filter((duration) => Number.isFinite(duration));
+  const longest = durations.length
+    ? Math.max(...durations)
+    : Number(String(route.transportSummary || "").match(/最长约?(\d+)分钟/)?.[1]);
+  return `交通方式：全程步行优先｜最长单段${Number.isFinite(longest) ? `${longest}分钟` : "待确认"}`;
 }
 
 function renderInlinePoiDetail(node, index, total) {
