@@ -12,21 +12,47 @@ const adjustmentMessageByType = {
 
 // placeId fallback covers high-frequency demo POIs.
 const fallbackImageByPlaceId = {
-  in77: "./assets/poi/in77.jpg",
-  brokenBridge: "./assets/poi/broken-bridge.jpg",
-  xinbailu: "./assets/poi/xinbailu.jpg",
-  nongtangli: "./assets/poi/nongtangli.jpg",
-  photoPoint: "./assets/poi/beishan-photo.jpg",
-  convenienceRest: "./assets/poi/hubin-rest.jpg",
+  start_in77_hubin: "./assets/poi/start_in77_hubin.jpg",
+  scenic_broken_bridge: "./assets/poi/scenic_broken_bridge.jpg",
+  scenic_baidi: "./assets/poi/scenic_baidi.jpg",
+  scenic_hubin_qingyu: "./assets/poi/scenic_hubin_qingyu.jpg",
+  scenic_hubin_park: "./assets/poi/scenic_hubin_park.jpg",
+  photo_yuebo_pavilion: "./assets/poi/photo_yuebo_pavilion.jpg",
+  photo_fourth_park: "./assets/poi/photo_fourth_park.jpg",
+  photo_yigongyuan_pier: "./assets/poi/photo_yigongyuan_pier.jpg",
+  photo_westlake_stone: "./assets/poi/photo_westlake_stone.jpg",
+  coffee_cosmic_joy: "./assets/poi/coffee_cosmic_joy.jpg",
+  coffee_starbucks_duanqiao: "./assets/poi/coffee_starbucks_duanqiao.jpg",
+  coffee_starbucks_kerry: "./assets/poi/coffee_starbucks_kerry.jpg",
+  coffee_peets_kerry: "./assets/poi/coffee_peets_kerry.jpg",
+  dinner_xinbailu_hubin88: "./assets/poi/dinner_xinbailu_hubin88.jpg",
+  dinner_wangjiangmen_xiaolongxia: "./assets/poi/dinner_wangjiangmen_xiaolongxia.jpg",
+  dinner_xinbailu_longyou: "./assets/poi/dinner_xinbailu_longyou.jpg",
+  dinner_yinhu_hangwei: "./assets/poi/dinner_yinhu_hangwei.jpg",
+  dinner_xinfeng_qingchun: "./assets/poi/dinner_xinfeng_qingchun.jpg",
+  dinner_yanlanlou_fountain: "./assets/poi/dinner_yanlanlou_fountain.jpg",
+  mall_in77_b: "./assets/poi/mall_in77_b.jpg",
+  mall_kerry_center: "./assets/poi/mall_kerry_center.jpg",
+  mall_hubin88: "./assets/poi/mall_hubin88.jpg",
+  rest_hubin_pedestrian: "./assets/poi/rest_hubin_pedestrian.jpg",
+  snack_panfangchun_jianjiao: "./assets/poi/snack_panfangchun_jianjiao.jpg",
+  snack_mizong_dabao: "./assets/poi/snack_mizong_dabao.jpg",
+  in77: "./assets/poi/start_in77_hubin.jpg",
+  brokenBridge: "./assets/poi/scenic_broken_bridge.jpg",
+  xinbailu: "./assets/poi/dinner_xinbailu_hubin88.jpg",
+  convenienceRest: "./assets/poi/rest_hubin_pedestrian.jpg",
 };
 
 // type fallback covers new backend POIs or places without dedicated images.
 const fallbackImageByType = {
-  start: "./assets/poi/in77.jpg",
-  scenic: "./assets/poi/beishan-photo.jpg",
-  coffee: "./assets/poi/baita-coffee.jpg",
-  dinner: "./assets/poi/xinbailu.jpg",
-  rest: "./assets/poi/hubin-rest.jpg",
+  start: "./assets/poi/start_in77_hubin.jpg",
+  scenic: "./assets/poi/scenic_broken_bridge.jpg",
+  photo: "./assets/poi/photo_fourth_park.jpg",
+  coffee: "./assets/poi/coffee_cosmic_joy.jpg",
+  dinner: "./assets/poi/dinner_xinbailu_hubin88.jpg",
+  mall: "./assets/poi/mall_in77_b.jpg",
+  rest: "./assets/poi/rest_hubin_pedestrian.jpg",
+  snack: "./assets/poi/snack_panfangchun_jianjiao.jpg",
 };
 
 const mockRouteData = {
