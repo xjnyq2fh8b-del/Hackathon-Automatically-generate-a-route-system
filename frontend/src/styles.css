@@ -263,28 +263,26 @@ textarea:focus {
 }
 
 .location-entry {
-  display: grid;
-  gap: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   margin: 12px 4px 0;
   border: 1px solid rgba(35, 139, 114, 0.16);
-  border-radius: 18px;
-  padding: 11px 12px;
+  border-radius: 999px;
+  padding: 8px 10px 8px 12px;
   color: #40524c;
   background: rgba(255, 253, 248, 0.72);
 }
 
-.location-entry strong {
-  display: block;
-  color: #24473f;
-  font-size: 13px;
-  font-weight: 950;
-}
-
-.location-entry p {
-  margin-top: 3px;
-  color: #69746f;
+.location-entry span {
+  min-width: 0;
+  overflow: hidden;
+  color: #40524c;
   font-size: 12px;
-  line-height: 1.45;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .location-entry.ready,
@@ -299,16 +297,16 @@ textarea:focus {
   background: rgba(255, 244, 239, 0.78);
 }
 
-.location-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.location-actions .secondary {
-  min-width: 0;
-  padding: 9px 10px;
+.location-entry button {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 999px;
+  padding: 7px 9px;
+  color: var(--green);
+  background: rgba(223, 241, 234, 0.86);
   font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
 }
 
 .section-label {
@@ -592,7 +590,7 @@ textarea:focus {
 
 .status-pill {
   border-radius: 999px;
-  padding: 6px 9px;
+  padding: 5px 8px;
   color: #9a5519;
   background: #ffe7c9;
   font-size: 12px;
@@ -962,8 +960,8 @@ textarea:focus {
 
 .notice {
   margin-top: 8px;
-  border-radius: 14px;
-  padding: 8px 10px;
+  border-radius: 12px;
+  padding: 6px 8px;
   color: #80602a;
   background: var(--amber-soft);
   font-size: 12px;
@@ -1369,12 +1367,12 @@ textarea:focus {
 .next-card {
   position: relative;
   display: grid;
-  gap: 11px;
-  margin-top: 10px;
+  gap: 8px;
+  margin-top: 8px;
   overflow: hidden;
   border: 1px solid rgba(22, 117, 94, 0.42);
-  border-radius: 22px;
-  padding: 16px;
+  border-radius: 18px;
+  padding: 11px 12px;
   color: #fff;
   background:
     radial-gradient(circle at 92% 12%, rgba(255, 255, 255, 0.32), transparent 28%),
@@ -1386,8 +1384,8 @@ textarea:focus {
   position: absolute;
   right: -24px;
   bottom: -34px;
-  width: 128px;
-  height: 128px;
+  width: 96px;
+  height: 96px;
   border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 50%;
   content: "";
@@ -1426,14 +1424,14 @@ textarea:focus {
 
 .next-instruction small {
   color: rgba(255, 255, 255, 0.78);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
 }
 
 .next-card h3 {
   margin: 0;
   color: #fff;
-  font-size: 22px;
+  font-size: 18px;
   line-height: 1.18;
 }
 
@@ -1470,7 +1468,7 @@ textarea:focus {
   border-radius: 999px;
   color: #17604f;
   background: rgba(255, 255, 255, 0.9);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 950;
 }
 
@@ -1873,11 +1871,11 @@ textarea:focus {
 
 .nl-adjust-submit {
   width: auto;
-  min-height: 38px;
+  min-height: 32px;
   margin-top: 0;
   padding: 9px 12px;
   box-shadow: 0 8px 14px rgba(240, 120, 47, 0.18);
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .quick-head {

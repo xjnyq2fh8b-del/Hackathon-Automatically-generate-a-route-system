@@ -855,6 +855,20 @@ function advanceSegment() {
   });
 }
 
+function previousSegment() {
+  const nodes = safeArray(state.route?.nodes);
+  if (nodes.length < 2) return;
+  const previousIndex = Math.max(state.activeSegmentIndex - 1, 0);
+  if (previousIndex === state.activeSegmentIndex) {
+    showToast("已经是第一段路线了");
+    return;
+  }
+  setStatePreservingScroll({
+    activeSegmentIndex: previousIndex,
+    selectedNodeId: nodes[previousIndex]?.id || state.selectedNodeId,
+  });
+}
+
 function setMapStatus(status, message = "") {
   if (state.mapStatus === status && state.mapMessage === message) return;
   setStatePreservingScroll({ mapStatus: status, mapMessage: message });
@@ -1446,6 +1460,27 @@ function renderLocationEntry() {
   `;
 }
 
+function renderLocationEntry() {
+  const contentByStatus = {
+    ready: { text: "📍 已使用当前位置", action: "重新定位", actionType: "useCurrentLocation" },
+    loading: { text: "📍 正在获取当前位置", action: "定位中", actionType: "useCurrentLocation" },
+    failed: { text: "📍 定位失败，已推荐湖滨 in77", action: "使用当前位置", actionType: "useCurrentLocation" },
+    far: { text: "📍 距离较远，建议使用湖滨 in77", action: "使用湖滨 in77", actionType: "useIn77Start" },
+    fallback: { text: "📍 出发点：湖滨 in77", action: "使用当前位置", actionType: "useCurrentLocation" },
+  };
+  const content = contentByStatus[state.locationStatus] || {
+    text: "📍 出发点：湖滨 in77",
+    action: "使用当前位置",
+    actionType: "useCurrentLocation",
+  };
+  return `
+    <section class="location-entry ${state.locationStatus}">
+      <span>${displayText(content.text, "📍 出发点：湖滨 in77")}</span>
+      <button data-action="${content.actionType}" ${state.locationStatus === "loading" ? "disabled" : ""}>${displayText(content.action, "使用当前位置")}</button>
+    </section>
+  `;
+}
+
 function renderLegacyInput() {
   return `
     <section class="screen">
@@ -1587,6 +1622,35 @@ function renderNextAction(route) {
       </div>
       <div class="next-card-actions">
         <button data-action="followRoute">出发</button>
+        <button data-action="nextSegment">下一步</button>
+      </div>
+    </section>
+  `;
+}
+
+function renderNextAction(route) {
+  const { current, next, segment } = getNextAction(route);
+  const currentName = current.shortName || current.name || "当前位置";
+  const nextName = next.name || "下一站待确认";
+  const method = segment.method || "交通方式待确认";
+  const duration = segment.duration || "";
+  const arrive = next.arrive || "到达时间待确认";
+  return `
+    <section class="card next-card">
+      <div class="next-card-head">
+        <span>下一步行动</span>
+        <b>现在执行</b>
+      </div>
+      <div class="next-instruction">
+        <small>从 ${displayText(currentName, "当前位置")} 出发</small>
+        <h3>去 ${displayText(nextName, "下一站待确认")}</h3>
+      </div>
+      <div class="next-route-line">
+        <span>${displayText(method, "交通方式待确认")}${displayText(duration, "")}</span>
+        <span>${displayText(arrive, "到达时间待确认")} 到达</span>
+      </div>
+      <div class="next-card-actions">
+        <button data-action="previousSegment">上一步</button>
         <button data-action="nextSegment">下一步</button>
       </div>
     </section>
@@ -1973,6 +2037,7 @@ function handleAction(event) {
   if (action === "adjust") applyAdjustment(target.dataset.type, state.selectedNodeId);
   if (action === "followRoute") navigateCurrentSegment();
   if (action === "navigateToPlace") navigateToPlace(id);
+  if (action === "previousSegment") previousSegment();
   if (action === "nextSegment") advanceSegment();
   if (action === "moveNodeUp") moveNode(id, -1);
   if (action === "moveNodeDown") moveNode(id, 1);
