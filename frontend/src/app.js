@@ -5,6 +5,8 @@ const AMAP_KEY = window.ROUTE_AGENT_CONFIG?.AMAP_KEY || "";
 const AMAP_SECURITY_JS_CODE = window.ROUTE_AGENT_CONFIG?.AMAP_SECURITY_JS_CODE || "";
 const AMAP_SCRIPT_ID = "amap-js-api";
 const AMAP_MAP_CONTAINER_ID = "route-amap";
+const HUBIN_IN77_START = { lng: 120.163749, lat: 30.25283, name: "湖滨 in77" };
+const HUBIN_SERVICE_RADIUS_KM = 10;
 
 const adjustmentMessageByType = {
   restaurantBusy: "餐厅排队太久，帮我换一个不用等太久的餐厅",
@@ -409,6 +411,7 @@ let state = {
   previousRoute: null,
   diff: null,
   selectedNodeId: null,
+  activeSegmentIndex: 0,
   activeTab: "route",
   drawerOpen: false,
   transportOpen: false,
@@ -425,6 +428,10 @@ let state = {
   hint: "",
   mapStatus: "idle",
   mapMessage: "",
+  startPointMode: "default",
+  userLocation: null,
+  locationStatus: "idle",
+  locationMessage: "",
 };
 
 function clone(value) {
@@ -679,6 +686,175 @@ function getRouteMapNodes(route) {
     .filter((node) => node.lngLat);
 }
 
+function calculateDistanceKm(pointA, pointB) {
+  const toRadians = (degree) => (degree * Math.PI) / 180;
+  const earthRadiusKm = 6371;
+  const dLat = toRadians(pointB.lat - pointA.lat);
+  const dLng = toRadians(pointB.lng - pointA.lng);
+  const lat1 = toRadians(pointA.lat);
+  const lat2 = toRadians(pointB.lat);
+  const value =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * earthRadiusKm * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
+}
+
+function getBrowserLocation() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error("浏览器不支持定位"));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        resolve({
+          lng: position.coords.longitude,
+          lat: position.coords.latitude,
+          source: "browser",
+        });
+      },
+      reject,
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+    );
+  });
+}
+
+async function getAmapLocation() {
+  if (!AMAP_KEY || !AMAP_SECURITY_JS_CODE) throw new Error("地图配置缺失");
+  const AMap = await loadAmapJsApi();
+  return new Promise((resolve, reject) => {
+    AMap.plugin("AMap.Geolocation", () => {
+      const geolocation = new AMap.Geolocation({
+        enableHighAccuracy: true,
+        timeout: 10000,
+        convert: true,
+      });
+      geolocation.getCurrentPosition((status, result) => {
+        if (status === "complete" && result?.position) {
+          resolve({
+            lng: Number(result.position.lng),
+            lat: Number(result.position.lat),
+            source: "amap",
+          });
+        } else {
+          reject(new Error(result?.message || "高德定位失败"));
+        }
+      });
+    });
+  });
+}
+
+async function locateUser() {
+  setStatePreservingScroll({
+    locationStatus: "loading",
+    locationMessage: "正在获取当前位置...",
+  });
+
+  try {
+    let location = null;
+    try {
+      location = await getAmapLocation();
+    } catch {
+      location = await getBrowserLocation();
+    }
+
+    const distanceKm = calculateDistanceKm(location, HUBIN_IN77_START);
+    const roundedDistance = distanceKm.toFixed(1);
+    if (distanceKm > HUBIN_SERVICE_RADIUS_KM) {
+      setStatePreservingScroll({
+        userLocation: { ...location, distanceKm },
+        startPointMode: "tooFar",
+        locationStatus: "far",
+        locationMessage:
+          `你距离西湖湖滨核心区约 ${roundedDistance}km，当前产品聚焦“现在就出发”的湖滨周边路线。建议使用湖滨 in77 作为出发点。`,
+      });
+      return;
+    }
+
+    setStatePreservingScroll({
+      userLocation: { ...location, distanceKm },
+      startPointMode: "currentLocation",
+      locationStatus: "ready",
+      locationMessage: `已使用你当前位置作为起点，距离湖滨 in77 约 ${roundedDistance}km。`,
+    });
+  } catch (error) {
+    console.error(error);
+    setStatePreservingScroll({
+      startPointMode: "locationFailed",
+      locationStatus: "failed",
+      locationMessage: "定位失败。你仍然可以使用湖滨 in77 作为起点继续规划。",
+    });
+  }
+}
+
+function useIn77StartPoint() {
+  setStatePreservingScroll({
+    startPointMode: "in77",
+    locationStatus: "fallback",
+    locationMessage: "已使用湖滨 in77 作为起点，可继续生成路线。",
+  });
+}
+
+function buildAmapNavigationUrl(toPlace, fromPlace) {
+  const toLngLat = getPoiLngLat(toPlace);
+  if (!toLngLat) return "";
+
+  const params = new URLSearchParams({
+    to: `${toLngLat[0]},${toLngLat[1]},${toPlace?.name || "目的地"}`,
+    mode: "walk",
+    policy: "1",
+    src: "route-agent",
+    coordinate: "gaode",
+    callnative: "1",
+  });
+
+  const fromLngLat = getPoiLngLat(fromPlace);
+  if (fromLngLat) {
+    params.set("from", `${fromLngLat[0]},${fromLngLat[1]},${fromPlace?.name || "当前位置"}`);
+  }
+
+  return `https://uri.amap.com/navigation?${params.toString()}`;
+}
+
+function openAmapNavigation(toPlace, fromPlace) {
+  const url = buildAmapNavigationUrl(toPlace, fromPlace);
+  if (!url) {
+    showToast("这个地点缺少坐标，暂时无法打开导航");
+    return;
+  }
+  window.open(url, "_blank", "noopener");
+}
+
+function navigateCurrentSegment() {
+  if (!state.route) return;
+  const { current, next } = getNextAction(state.route);
+  openAmapNavigation(next, current);
+}
+
+function navigateToPlace(placeId) {
+  if (!state.route) return;
+  const nodes = safeArray(state.route.nodes);
+  const targetIndex = nodes.findIndex((node) => node.id === placeId);
+  const target = nodes[targetIndex];
+  const previous = targetIndex > 0 ? nodes[targetIndex - 1] : null;
+  if (!target) return;
+  openAmapNavigation(target, previous);
+}
+
+function advanceSegment() {
+  const nodes = safeArray(state.route?.nodes);
+  if (nodes.length < 2) return;
+  const nextIndex = Math.min(state.activeSegmentIndex + 1, nodes.length - 2);
+  if (nextIndex === state.activeSegmentIndex) {
+    showToast("已经是最后一段路线了");
+    return;
+  }
+  setStatePreservingScroll({
+    activeSegmentIndex: nextIndex,
+    selectedNodeId: nodes[nextIndex]?.id || state.selectedNodeId,
+  });
+}
+
 function setMapStatus(status, message = "") {
   if (state.mapStatus === status && state.mapMessage === message) return;
   setStatePreservingScroll({ mapStatus: status, mapMessage: message });
@@ -847,8 +1023,7 @@ function recalculateAfterManualChange(route, explanation) {
 function getNextAction(route) {
   const nodes = safeArray(route.nodes);
   const segments = safeArray(route.transportSegments);
-  const index = Math.max(0, nodes.findIndex((node) => node.id === state.selectedNodeId));
-  const safeIndex = index >= nodes.length - 1 ? 0 : index;
+  const safeIndex = Math.min(Math.max(0, state.activeSegmentIndex || 0), Math.max(0, nodes.length - 2));
   const current = nodes[safeIndex] || {};
   const next = nodes[safeIndex + 1] || nodes[1] || nodes[0] || {};
   const segment = segments[safeIndex] || segments[0] || { method: "交通方式待确认", duration: "", from: "", to: "" };
@@ -924,6 +1099,14 @@ function showToast(message) {
 }
 
 function startGeneration() {
+  if (state.locationStatus === "far" && state.startPointMode !== "in77") {
+    setStatePreservingScroll({
+      locationMessage:
+        "你距离西湖湖滨核心区较远，当前产品聚焦“现在就出发”的湖滨周边路线。请先使用湖滨 in77 作为出发点。",
+    });
+    return;
+  }
+
   const requestText = state.inputText;
   setState({
     view: "loading",
@@ -931,6 +1114,7 @@ function startGeneration() {
     diff: null,
     previousRoute: null,
     activeAdjustment: null,
+    activeSegmentIndex: 0,
     activeTab: "route",
     drawerOpen: false,
     errorMessage: "",
@@ -950,6 +1134,7 @@ function startGeneration() {
             loadingStep: 3,
             route,
             selectedNodeId: route.nodes[0]?.id,
+            activeSegmentIndex: 0,
             errorMessage: "",
             hint: "",
           });
@@ -978,6 +1163,7 @@ async function applyAdjustment(type, targetNodeId) {
       route: result.route,
       diff: result.diff,
       selectedNodeId: result.route.nodes[0]?.id,
+      activeSegmentIndex: 0,
       activeAdjustment: type,
       drawerOpen: true,
       naturalAdjustLoading: false,
@@ -1005,6 +1191,7 @@ async function submitNaturalAdjustment() {
       route: result.route,
       diff: result.diff,
       selectedNodeId: result.route.nodes[0]?.id,
+      activeSegmentIndex: 0,
       activeAdjustment: null,
       drawerOpen: true,
       naturalAdjustText: "",
@@ -1031,6 +1218,7 @@ async function applyNodeAction(action, targetNodeId) {
       route: result.route,
       diff: result.diff,
       selectedNodeId: action === "delete" ? result.route.nodes[0]?.id : targetNodeId,
+      activeSegmentIndex: 0,
       activeAdjustment: null,
       drawerOpen: true,
       naturalAdjustLoading: false,
@@ -1078,6 +1266,7 @@ function moveNode(id, direction) {
     previousRoute,
     route: recalculated,
     selectedNodeId: id,
+    activeSegmentIndex: 0,
     drawerOpen: true,
     hint: recalculated.hint || "",
     diff: {
@@ -1125,6 +1314,7 @@ function deleteNode(id) {
     previousRoute,
     route: recalculated,
     selectedNodeId: recalculated.nodes[0]?.id,
+    activeSegmentIndex: 0,
     drawerOpen: true,
     hint: recalculated.hint || "",
     diff: {
@@ -1167,6 +1357,7 @@ function restoreRoute() {
     diff: null,
     activeAdjustment: null,
     selectedNodeId: restored.nodes[0]?.id,
+    activeSegmentIndex: 0,
     drawerOpen: false,
     hint: "",
   });
@@ -1212,6 +1403,7 @@ function renderInput() {
         <div class="input-hint">可输入一句话，语音输入下一版接入。</div>
         <div class="mic-state">${state.micActive ? "语音输入演示中，当前请以文字输入为准" : ""}</div>
         <div class="auto-note">系统会从你的自然语言中自动识别时间、预算、同行人和偏好。</div>
+        ${renderLocationEntry()}
         <div class="example-block">
           <div class="section-label">试试这些需求</div>
           <div class="examples example-chips">
@@ -1228,6 +1420,29 @@ function renderInput() {
       </section>
     </section>
     ${renderToast()}
+  `;
+}
+
+function renderLocationEntry() {
+  const showFallback =
+    state.locationStatus === "far" ||
+    state.locationStatus === "failed" ||
+    state.locationStatus === "fallback" ||
+    state.startPointMode === "in77";
+  const message = state.locationMessage || "可使用当前位置判断是否适合湖滨周边“现在就出发”路线。";
+  return `
+    <section class="location-entry ${state.locationStatus}">
+      <div>
+        <strong>出发点</strong>
+        <p>${displayText(message, "")}</p>
+      </div>
+      <div class="location-actions">
+        <button class="secondary" data-action="useCurrentLocation" ${state.locationStatus === "loading" ? "disabled" : ""}>
+          ${state.locationStatus === "loading" ? "定位中" : "使用当前位置"}
+        </button>
+        ${showFallback ? `<button class="secondary" data-action="useIn77Start">使用湖滨 in77 作为起点</button>` : ""}
+      </div>
+    </section>
   `;
 }
 
@@ -1344,6 +1559,35 @@ function renderNextAction(route) {
       <div class="next-route-line">
         <span>${displayText(method, "交通方式待确认")}${displayText(duration, "")}</span>
         <span>${displayText(arrive, "到达时间待确认")} 到达</span>
+      </div>
+    </section>
+  `;
+}
+
+function renderNextAction(route) {
+  const { current, next, segment } = getNextAction(route);
+  const currentName = current.shortName || current.name || "当前位置";
+  const nextName = next.name || "下一站待确认";
+  const method = segment.method || "交通方式待确认";
+  const duration = segment.duration || "";
+  const arrive = next.arrive || "到达时间待确认";
+  return `
+    <section class="card next-card">
+      <div class="next-card-head">
+        <span>下一步行动</span>
+        <b>现在执行</b>
+      </div>
+      <div class="next-instruction">
+        <small>从 ${displayText(currentName, "当前位置")} 出发</small>
+        <h3>去 ${displayText(nextName, "下一站待确认")}</h3>
+      </div>
+      <div class="next-route-line">
+        <span>${displayText(method, "交通方式待确认")}${displayText(duration, "")}</span>
+        <span>${displayText(arrive, "到达时间待确认")} 到达</span>
+      </div>
+      <div class="next-card-actions">
+        <button data-action="followRoute">出发</button>
+        <button data-action="nextSegment">下一步</button>
       </div>
     </section>
   `;
@@ -1530,6 +1774,23 @@ function renderPoiActions(node, index, total) {
   `;
 }
 
+function renderPoiActions(node, index, total) {
+  const isStart = node.type === "start" || index === 0;
+  if (isStart) return "";
+  const secondaryActions = [
+    `<button class="small-btn" data-action="navigateToPlace" data-id="${node.id}">出发</button>`,
+    `<button class="small-btn" data-action="deleteNode" data-id="${node.id}">删除</button>`,
+    index > 1 ? `<button class="small-btn" data-action="moveNodeUp" data-id="${node.id}">提前</button>` : "",
+    index < total - 1 ? `<button class="small-btn" data-action="moveNodeDown" data-id="${node.id}">往后</button>` : "",
+  ].filter(Boolean);
+  return `
+    <div class="poi-actions">
+      <button class="small-btn primary-mini" data-action="replaceNode" data-id="${node.id}">换一个</button>
+      <div class="poi-secondary-actions">${secondaryActions.join("")}</div>
+    </div>
+  `;
+}
+
 function renderPoiVisual(node, index) {
   const imageUrl = hasValue(node.imageUrl)
     ? String(node.imageUrl)
@@ -1538,6 +1799,20 @@ function renderPoiVisual(node, index) {
     <div class="poi-visual ${displayText(node.type, "rest")} ${imageUrl ? "has-image" : ""}">
       ${imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="${displayText(node.name, "地点图片")}" loading="lazy" onerror="this.closest('.poi-visual')?.classList.add('image-failed'); this.remove();">` : ""}
       <span class="poi-index">${index + 1}</span>
+    </div>
+  `;
+}
+
+function renderBottomBar(route) {
+  const { next, segment } = getNextAction(route);
+  const nextName = next.name || "下一站待确认";
+  const method = segment.method || "交通方式待确认";
+  const duration = segment.duration ? segment.duration.replace("约", "") : "";
+  return `
+    <div class="bottom-action-bar">
+      <div><span>下一站</span><strong>${displayText(nextName, "下一站待确认")}｜${displayText(method, "交通方式待确认")}${displayText(duration, "")}</strong></div>
+      <button class="secondary" data-action="openDrawer">改路线</button>
+      <button class="primary" data-action="followRoute">出发</button>
     </div>
   `;
 }
@@ -1667,6 +1942,8 @@ function handleAction(event) {
     });
   }
   if (action === "generate") startGeneration();
+  if (action === "useCurrentLocation") locateUser();
+  if (action === "useIn77Start") useIn77StartPoint();
   if (action === "switchTab") setState({ activeTab: target.dataset.tab });
   if (action === "toggleTransport") setState({ transportOpen: !state.transportOpen });
   if (action === "toggleNodeDetail") {
@@ -1694,7 +1971,9 @@ function handleAction(event) {
   if (action === "openDrawer") setState({ drawerOpen: true });
   if (action === "closeDrawer") setState({ drawerOpen: false });
   if (action === "adjust") applyAdjustment(target.dataset.type, state.selectedNodeId);
-  if (action === "followRoute") showToast("高德导航即将接入；当前可按路线顺序前往下一站。");
+  if (action === "followRoute") navigateCurrentSegment();
+  if (action === "navigateToPlace") navigateToPlace(id);
+  if (action === "nextSegment") advanceSegment();
   if (action === "moveNodeUp") moveNode(id, -1);
   if (action === "moveNodeDown") moveNode(id, 1);
   if (action === "deleteNode") deleteNode(id);

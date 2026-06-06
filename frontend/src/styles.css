@@ -262,6 +262,55 @@ textarea:focus {
   background: rgba(223, 241, 234, 0.72);
 }
 
+.location-entry {
+  display: grid;
+  gap: 10px;
+  margin: 12px 4px 0;
+  border: 1px solid rgba(35, 139, 114, 0.16);
+  border-radius: 18px;
+  padding: 11px 12px;
+  color: #40524c;
+  background: rgba(255, 253, 248, 0.72);
+}
+
+.location-entry strong {
+  display: block;
+  color: #24473f;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.location-entry p {
+  margin-top: 3px;
+  color: #69746f;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.location-entry.ready,
+.location-entry.fallback {
+  border-color: rgba(35, 139, 114, 0.28);
+  background: rgba(223, 241, 234, 0.72);
+}
+
+.location-entry.far,
+.location-entry.failed {
+  border-color: rgba(197, 73, 54, 0.26);
+  background: rgba(255, 244, 239, 0.78);
+}
+
+.location-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.location-actions .secondary {
+  min-width: 0;
+  padding: 9px 10px;
+  font-size: 12px;
+}
+
 .section-label {
   margin: 18px 0 10px;
   font-size: 14px;
@@ -1405,6 +1454,24 @@ textarea:focus {
   font-size: 13px;
   font-weight: 900;
   text-align: center;
+}
+
+.next-card-actions {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.next-card-actions button {
+  min-height: 38px;
+  border: 0;
+  border-radius: 999px;
+  color: #17604f;
+  background: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  font-weight: 950;
 }
 
 .agent-adjust-entry {
