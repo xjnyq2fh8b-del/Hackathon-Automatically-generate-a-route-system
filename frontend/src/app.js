@@ -1,6 +1,10 @@
 const app = document.querySelector("#app");
 const API_BASE_URL = (window.ROUTE_AGENT_CONFIG?.API_BASE_URL || "https://route-backend-amyh.onrender.com").replace(/\/$/, "");
 const USE_BACKEND_API = true;
+const AMAP_KEY = window.ROUTE_AGENT_CONFIG?.AMAP_KEY || "";
+const AMAP_SECURITY_JS_CODE = window.ROUTE_AGENT_CONFIG?.AMAP_SECURITY_JS_CODE || "";
+const AMAP_SCRIPT_ID = "amap-js-api";
+const AMAP_MAP_CONTAINER_ID = "route-amap";
 
 const adjustmentMessageByType = {
   restaurantBusy: "餐厅排队太久，帮我换一个不用等太久的餐厅",
@@ -387,6 +391,13 @@ const mockRouteData = {
 let placeById = Object.fromEntries(mockRouteData.places.map((place) => [place.id, place]));
 const typeText = mockRouteData.labels.typeText;
 const typeIcon = mockRouteData.labels.typeIcon;
+const amapRuntime = {
+  loadPromise: null,
+  map: null,
+  markers: [],
+  polyline: null,
+  container: null,
+};
 
 let state = {
   view: "input",
@@ -412,6 +423,8 @@ let state = {
   lastRequestText: "",
   toast: "",
   hint: "",
+  mapStatus: "idle",
+  mapMessage: "",
 };
 
 function clone(value) {
@@ -629,6 +642,148 @@ function displayWaitRisk(value) {
 
 function safeArray(value) {
   return Array.isArray(value) ? value : [];
+}
+
+function getPoiLngLat(place) {
+  const candidates = [
+    [place?.lng, place?.lat],
+    [place?.longitude, place?.latitude],
+    [place?.map?.lng, place?.map?.lat],
+  ];
+
+  if (typeof place?.location === "string") {
+    const [lng, lat] = place.location.split(",").map(Number);
+    candidates.push([lng, lat]);
+  }
+
+  if (place?.location && typeof place.location === "object") {
+    candidates.push([place.location.lng, place.location.lat]);
+    candidates.push([place.location.longitude, place.location.latitude]);
+  }
+
+  if (Array.isArray(place?.coordinates)) candidates.push(place.coordinates);
+  if (Array.isArray(place?.coordinate)) candidates.push(place.coordinate);
+
+  for (const [lngValue, latValue] of candidates) {
+    const lng = Number(lngValue);
+    const lat = Number(latValue);
+    if (Number.isFinite(lng) && Number.isFinite(lat)) return [lng, lat];
+  }
+
+  return null;
+}
+
+function getRouteMapNodes(route) {
+  return safeArray(route?.nodes)
+    .map((node, index) => ({ ...node, index, lngLat: getPoiLngLat(node) }))
+    .filter((node) => node.lngLat);
+}
+
+function setMapStatus(status, message = "") {
+  if (state.mapStatus === status && state.mapMessage === message) return;
+  setStatePreservingScroll({ mapStatus: status, mapMessage: message });
+}
+
+function loadAmapJsApi() {
+  if (window.AMap) return Promise.resolve(window.AMap);
+  if (amapRuntime.loadPromise) return amapRuntime.loadPromise;
+
+  window._AMapSecurityConfig = {
+    securityJsCode: AMAP_SECURITY_JS_CODE,
+  };
+
+  amapRuntime.loadPromise = new Promise((resolve, reject) => {
+    const existing = document.getElementById(AMAP_SCRIPT_ID);
+    if (existing) {
+      existing.addEventListener("load", () => resolve(window.AMap), { once: true });
+      existing.addEventListener("error", reject, { once: true });
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.id = AMAP_SCRIPT_ID;
+    script.async = true;
+    script.src = `https://webapi.amap.com/maps?v=2.0&key=${encodeURIComponent(AMAP_KEY)}`;
+    script.onload = () => (window.AMap ? resolve(window.AMap) : reject(new Error("AMap missing")));
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+
+  return amapRuntime.loadPromise;
+}
+
+function drawAmapRoute(AMap, route, container) {
+  const mapNodes = getRouteMapNodes(route);
+  if (!mapNodes.length) {
+    setMapStatus("error", "当前路线缺少可用 POI 经纬度，路线文字仍可查看");
+    return;
+  }
+
+  amapRuntime.container = container;
+  amapRuntime.map = new AMap.Map(container, {
+    zoom: 15,
+    center: mapNodes[0].lngLat,
+    viewMode: "2D",
+  });
+
+  amapRuntime.markers = mapNodes.map((node) => {
+    const marker = new AMap.Marker({
+      position: node.lngLat,
+      title: node.name || "",
+      label: {
+        content: String(node.index + 1),
+        direction: "top",
+      },
+    });
+    marker.on("click", () => setStatePreservingScroll({ selectedNodeId: node.id }));
+    return marker;
+  });
+
+  amapRuntime.map.add(amapRuntime.markers);
+
+  if (mapNodes.length > 1) {
+    amapRuntime.polyline = new AMap.Polyline({
+      path: mapNodes.map((node) => node.lngLat),
+      strokeColor: "#238b72",
+      strokeOpacity: 0.9,
+      strokeWeight: 6,
+      strokeStyle: "solid",
+      lineJoin: "round",
+      lineCap: "round",
+    });
+    amapRuntime.map.add(amapRuntime.polyline);
+    amapRuntime.map.setFitView([...amapRuntime.markers, amapRuntime.polyline], false, [54, 34, 54, 34]);
+  } else {
+    amapRuntime.map.setFitView(amapRuntime.markers, false, [54, 34, 54, 34]);
+  }
+
+  setMapStatus("ready", "");
+}
+
+async function hydrateAmapRoute(route) {
+  const container = document.getElementById(AMAP_MAP_CONTAINER_ID);
+  if (!container || state.activeTab !== "map") return;
+
+  if (!AMAP_KEY || !AMAP_SECURITY_JS_CODE) {
+    setMapStatus("error", "地图配置缺失");
+    return;
+  }
+
+  try {
+    if (state.mapStatus !== "ready") setMapStatus("loading", "地图加载中...");
+    const AMap = await loadAmapJsApi();
+    const latestContainer = document.getElementById(AMAP_MAP_CONTAINER_ID);
+    if (!latestContainer || state.activeTab !== "map") return;
+    drawAmapRoute(AMap, route, latestContainer);
+  } catch (error) {
+    console.error(error);
+    setMapStatus("error", "地图加载失败，路线文字仍可查看");
+  }
+}
+
+function syncMapAfterRender() {
+  if (state.view !== "result" || state.activeTab !== "map" || !state.route) return;
+  window.requestAnimationFrame(() => hydrateAmapRoute(state.route));
 }
 
 function formatConstraintSummary(constraints) {
@@ -1027,6 +1182,7 @@ function render() {
     app.innerHTML = renderInput();
   }
   bindEvents();
+  syncMapAfterRender();
 }
 
 function renderInput() {
@@ -1235,8 +1391,20 @@ function renderTransportList(route) {
 
 function renderMap(route, mode) {
   const nodes = safeArray(route.nodes);
-  const points = nodes.map((node) => `${node.map?.x ?? 50},${node.map?.y ?? 50}`).join(" ");
+  const mapNodes = getRouteMapNodes(route);
   const activeNode = nodes.find((node) => node.id === state.selectedNodeId) || nodes[0] || {};
+  const showMapState = state.mapStatus === "loading" || state.mapStatus === "error";
+  return `
+    <section class="card map-card ${mode === "preview" ? "map-preview-card" : "map-large-card"}">
+      ${mode === "large" ? `<div class="section-head"><h3>路线地图</h3><span class="summary-label">${mapNodes.length}/${nodes.length} 站</span></div>` : ""}
+      <div class="map amap-shell ${mode === "preview" ? "map-preview" : "map-large"}">
+        <div id="${AMAP_MAP_CONTAINER_ID}" class="amap-container" aria-label="高德路线地图"></div>
+        ${showMapState ? `<div class="map-state ${state.mapStatus === "error" ? "error" : ""}">${displayText(state.mapMessage, state.mapStatus === "error" ? "地图加载失败，路线文字仍可查看" : "地图加载中...")}</div>` : ""}
+        ${mode === "large" ? `<div class="map-active-place"><strong>${displayText(activeNode.name, "地点待确认")}</strong><span>${displayText(typeText[activeNode.type], "类型待确认")} | ${displayText(activeNode.arrive, "到达时间待确认")} 到达</span></div>` : ""}
+      </div>
+      ${mode === "large" ? `<div class="map-caption"><span>按当前路线顺序展示 POI Marker 和路线连线</span><span>${displayText(nodes.find((node) => node.id === state.selectedNodeId)?.name, "")}</span></div>` : ""}
+    </section>
+  `;
   return `
     <section class="card map-card ${mode === "preview" ? "map-preview-card" : "map-large-card"}">
       ${mode === "large" ? `<div class="section-head"><h3>路线地图</h3><span class="summary-label">${nodes.length}站</span></div>` : ""}
