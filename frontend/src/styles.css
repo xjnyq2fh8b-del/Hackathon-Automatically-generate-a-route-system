@@ -1372,7 +1372,7 @@ textarea:focus {
   overflow: hidden;
   border: 1px solid rgba(22, 117, 94, 0.42);
   border-radius: 18px;
-  padding: 11px 12px;
+  padding: 12px 13px;
   color: #fff;
   background:
     radial-gradient(circle at 92% 12%, rgba(255, 255, 255, 0.32), transparent 28%),
@@ -1406,12 +1406,65 @@ textarea:focus {
   font-weight: 950;
 }
 
-.next-card-head b {
+.segment-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   border-radius: 999px;
-  padding: 6px 9px;
-  color: #18604f;
-  background: rgba(255, 255, 255, 0.9);
+  padding: 4px 5px 4px 9px;
+  color: #fff;
+  background: rgba(20, 83, 68, 0.62);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
   font-size: 11px;
+  font-weight: 950;
+  white-space: nowrap;
+  backdrop-filter: blur(10px);
+}
+
+.segment-switcher button {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.18);
+  font-size: 18px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.segment-switcher button:disabled {
+  cursor: default;
+  color: rgba(255, 255, 255, 0.42);
+  background: rgba(255, 255, 255, 0.08);
+  opacity: 1;
+}
+
+.next-compact-title {
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+  color: #fff;
+  font-size: 19px;
+  font-weight: 950;
+  line-height: 1.22;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.next-compact-meta {
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+  border-radius: 13px;
+  padding: 7px 10px;
+  color: rgba(255, 255, 255, 0.96);
+  background: rgba(255, 255, 255, 0.16);
+  font-size: 13px;
+  font-weight: 900;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 

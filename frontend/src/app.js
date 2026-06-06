@@ -1657,6 +1657,33 @@ function renderNextAction(route) {
   `;
 }
 
+function renderNextAction(route) {
+  const nodes = safeArray(route.nodes);
+  const totalSegments = Math.max(0, nodes.length - 1);
+  const currentSegment = totalSegments ? Math.min(state.activeSegmentIndex || 0, totalSegments - 1) + 1 : 0;
+  const { current, next, segment } = getNextAction(route);
+  const currentName = current.shortName || current.name || "当前位置";
+  const nextName = next.name || "下一站待确认";
+  const duration = segment.duration || "";
+  const arrive = next.arrive || "到达时间待确认";
+  const canGoPrevious = currentSegment > 1;
+  const canGoNext = currentSegment > 0 && currentSegment < totalSegments;
+  return `
+    <section class="card next-card">
+      <div class="next-card-head">
+        <span>下一步行动</span>
+        <div class="segment-switcher" aria-label="切换路线分段">
+          <span>当前段 ${currentSegment || 0}/${totalSegments || 0}</span>
+          <button data-action="previousSegment" ${canGoPrevious ? "" : "disabled"} aria-label="上一段">‹</button>
+          <button data-action="nextSegment" ${canGoNext ? "" : "disabled"} aria-label="下一段">›</button>
+        </div>
+      </div>
+      <div class="next-compact-title">${displayText(currentName, "当前位置")} → ${displayText(nextName, "下一站待确认")}</div>
+      <div class="next-compact-meta">步行${displayText(duration, "约 -- 分钟")} · 预计 ${displayText(arrive, "到达时间待确认")} 到达</div>
+    </section>
+  `;
+}
+
 function renderTabs() {
   const tabs = [
     ["route", "行程"],
