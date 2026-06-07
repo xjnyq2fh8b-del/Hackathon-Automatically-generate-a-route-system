@@ -48,15 +48,15 @@
 }
 ```
 
-## POST /api/route/generate
+## POST /api/chat-route
 
-前端点击“生成可执行路线”时调用。P0 固定返回默认路线。
+前端点击“生成可执行路线”时调用。LLM 只解析自然语言意图，路线仍由后端 routePlanner 生成。
 
 ### Request
 
 ```json
 {
-  "text": "我在湖滨银泰，下午2点到6点，想逛西湖、喝咖啡、吃晚饭，人均150，不想排队。"
+  "message": "我在湖滨银泰，下午2点到6点，想逛西湖、喝咖啡、吃晚饭，人均150，不想排队。"
 }
 ```
 
@@ -77,35 +77,33 @@
 
 完整样例见 `docs/routeData.sample.json`。
 
-## POST /api/route/adjust
+## POST /api/chat-route 调整消息
 
-前端触发快捷调整或地点卡片单节点调整时调用。P0 根据请求返回完整新路线和 diff。
+前端触发快捷调整或地点卡片单节点调整时调用。前端把按钮转换成自然语言 `message`，后端返回完整新路线和 diff。
 
 ### 快捷调整 Request
 
 ```json
 {
-  "adjustmentType": "restaurantBusy"
+  "message": "餐厅排队太久，帮我换一个不用等太久的餐厅"
 }
 ```
 
-### adjustmentType
+### 快捷调整 message 映射
 
-| adjustmentType | 用户按钮 | P0 返回变化 |
+| type | 用户按钮 | message |
 |---|---|---|
-| `restaurantBusy` | 餐厅排队太久 | 新白鹿餐厅湖滨店 -> 弄堂里湖滨店 |
-| `budget100` | 预算降到100 | 咖啡改轻休息点，晚餐改弄堂里 |
-| `noCoffee` | 不要咖啡 | 删除湖畔白塔咖啡 |
-| `twoHours` | 只剩2小时 | 只保留起点、断桥和晚餐 |
-| `photo` | 想更适合拍照 | 新增北山街湖景点 |
+| `restaurantBusy` | 餐厅排队太久 | 餐厅排队太久，帮我换一个不用等太久的餐厅 |
+| `budget100` | 预算降到100 | 预算降到100，帮我重新规划一条人均100以内的路线 |
+| `noCoffee` | 不要咖啡 | 不想喝咖啡，帮我删掉咖啡相关安排并保持路线顺路 |
+| `twoHours` | 只剩2小时 | 现在只剩2小时，帮我压缩成2小时内能走完的路线 |
+| `photo` | 想更适合拍照 | 想更适合拍照，帮我调整成更适合拍照的路线 |
 
 ### 地点卡片单节点调整 Request
 
 ```json
 {
-  "action": "delete",
-  "nodeId": "baitacoffee",
-  "route": {}
+  "message": "帮我删掉湖畔白塔咖啡，并重新规划剩下路线"
 }
 ```
 
