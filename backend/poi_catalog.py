@@ -186,9 +186,45 @@ def to_frontend_places(pois: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if "rating" in poi:
             place["rating"] = str(poi["rating"])
         place.setdefault("shortName", poi.get("name", ""))
-        place.setdefault("reason", poi.get("note", ""))
+        if not _text(place.get("reason")):
+            place["reason"] = _place_reason(poi)
         places.append(place)
     return places
+
+
+def _place_reason(poi: dict[str, Any]) -> str:
+    reason = _text(poi.get("reason"))
+    if reason:
+        return reason
+
+    note = _text(poi.get("note"))
+    if note:
+        return note
+
+    poi_type = poi.get("type")
+    tags = [str(tag) for tag in poi.get("tags", []) if str(tag).strip()]
+    tag_text = "、".join(tags[:2])
+    if poi_type == "start":
+        return "作为路线起点，集合方便，也便于衔接后续湖滨步行路线。"
+    if poi_type == "scenic":
+        return f"安排这里进入西湖游览节奏，{tag_text or '湖景和步行体验'}更适合开场。"
+    if poi_type == "photo":
+        return f"这里更适合拍照打卡，{tag_text or '视野和取景'}能补足路线体验。"
+    if poi_type == "coffee":
+        return f"作为中段休息点，{tag_text or '适合坐下聊天'}，不打断后续路线。"
+    if poi_type == "dinner":
+        return f"适合作为餐饮收尾，{tag_text or '用餐和离开都方便'}，方便结束后返回湖滨商圈。"
+    if poi_type == "mall":
+        return f"作为室内缓冲点，{tag_text or '补给和休息'}都比较方便。"
+    if poi_type == "rest":
+        return f"适合在路线中短暂停留，{tag_text or '降低步行疲劳'}。"
+    if poi_type == "snack":
+        return f"适合快速补充体力，{tag_text or '花费和停留时间'}都更轻量。"
+    return f"该地点和本次路线目标匹配，{tag_text or '可作为当前行程节点'}。"
+
+
+def _text(value: Any) -> str:
+    return value.strip() if isinstance(value, str) and value.strip() else ""
 
 
 def _place_image_url(poi: dict[str, Any]) -> str:

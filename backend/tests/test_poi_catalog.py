@@ -80,6 +80,21 @@ class PoiCatalogTest(unittest.TestCase):
         places = to_frontend_places([{"id": "no-image", "name": "no image", "type": "scenic"}])
         self.assertNotIn("imageUrl", places[0])
 
+    def test_frontend_places_generate_reason_when_catalog_note_is_empty(self) -> None:
+        places = to_frontend_places(
+            [
+                {
+                    "id": "scenic",
+                    "name": "西湖景点",
+                    "type": "scenic",
+                    "tags": ["湖景", "步行友好"],
+                    "note": "",
+                }
+            ]
+        )
+        self.assertIn("湖景", places[0]["reason"])
+        self.assertNotEqual(places[0]["reason"], "")
+
     def test_csv_can_be_written_to_json(self) -> None:
         catalog, result = csv_to_catalog(ROOT / "data" / "poiCatalog.sample.csv")
         self.assertEqual(result.errors, [])
