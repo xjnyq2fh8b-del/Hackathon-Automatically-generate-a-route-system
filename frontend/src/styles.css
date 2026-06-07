@@ -145,6 +145,49 @@ p {
   box-shadow: 0 18px 42px rgba(70, 50, 30, 0.1);
 }
 
+.restore-route-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0 0 12px;
+  border: 1px solid rgba(35, 139, 114, 0.16);
+  border-radius: 20px;
+  padding: 12px;
+  background: rgba(255, 253, 248, 0.72);
+  box-shadow: 0 10px 24px rgba(70, 50, 30, 0.08);
+}
+
+.restore-route-card strong {
+  display: block;
+  color: #37423e;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.restore-route-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ghost-btn {
+  min-height: 38px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 12px;
+  color: #61706a;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.ghost-btn:active {
+  background: rgba(35, 139, 114, 0.08);
+}
+
 .input-head {
   display: flex;
   align-items: center;

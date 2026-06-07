@@ -1,6 +1,8 @@
 const app = document.querySelector("#app");
 const API_BASE_URL = (window.ROUTE_AGENT_CONFIG?.API_BASE_URL || "https://route-backend-amyh.onrender.com").replace(/\/$/, "");
 const USE_BACKEND_API = true;
+const LAST_ROUTE_STORAGE_KEY = "westlake:lastRouteData";
+const LAST_ROUTE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 const AMAP_KEY = window.ROUTE_AGENT_CONFIG?.AMAP_KEY || "";
 const AMAP_SECURITY_JS_CODE = window.ROUTE_AGENT_CONFIG?.AMAP_SECURITY_JS_CODE || "";
 const AMAP_SCRIPT_ID = "amap-js-api";
@@ -426,6 +428,9 @@ let state = {
   constraintSummary: "",
   errorMessage: "",
   lastRequestText: "",
+  lastRouteData: null,
+  sessionId: "local-demo-session",
+  restoreCandidate: null,
   toast: "",
   hint: "",
   mapStatus: "idle",
@@ -438,6 +443,61 @@ let state = {
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function getStartLocationSnapshot() {
+  return {
+    startPointMode: state.startPointMode,
+    userLocation: state.userLocation,
+    locationStatus: state.locationStatus,
+    locationMessage: state.locationMessage,
+  };
+}
+
+function saveLastRouteCache(routeData) {
+  if (!routeData || typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(
+      LAST_ROUTE_STORAGE_KEY,
+      JSON.stringify({
+        routeData,
+        savedAt: Date.now(),
+        sessionId: state.sessionId,
+        activeStepIndex: state.activeSegmentIndex || 0,
+        startLocation: getStartLocationSnapshot(),
+      }),
+    );
+  } catch (error) {
+    console.warn("Failed to save last route", error);
+  }
+}
+
+function clearLastRouteCache() {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.removeItem(LAST_ROUTE_STORAGE_KEY);
+  } catch (error) {
+    console.warn("Failed to clear last route", error);
+  }
+}
+
+function readLastRouteCache() {
+  if (typeof localStorage === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(LAST_ROUTE_STORAGE_KEY);
+    if (!raw) return null;
+    const cached = JSON.parse(raw);
+    const savedAt = Number(cached?.savedAt);
+    if (!cached?.routeData || !Number.isFinite(savedAt) || Date.now() - savedAt > LAST_ROUTE_MAX_AGE_MS) {
+      clearLastRouteCache();
+      return null;
+    }
+    return cached;
+  } catch (error) {
+    clearLastRouteCache();
+    console.warn("Failed to read last route", error);
+    return null;
+  }
 }
 
 function getPlace(id) {
@@ -530,8 +590,7 @@ function adjustRouteLocal(adjustmentType, currentRoute, targetNodeId) {
 }
 
 async function generateRouteFromApi() {
-  const result = await chatRouteFromApi(state.inputText);
-  return result.route;
+  return chatModifyRouteFromApi(state.inputText, null);
 }
 
 async function adjustRouteFromApi(adjustmentType, currentRoute, targetNodeId) {
@@ -560,16 +619,29 @@ async function adjustRouteActionFromApi(action, currentRoute, targetNodeId) {
 }
 
 async function chatRouteFromApi(text, currentRoute) {
+  return chatModifyRouteFromApi(text, currentRoute);
+}
+
+async function chatModifyRouteFromApi(text, currentRoute) {
   const message = String(text || "").trim();
   if (!message) {
     throw new Error("请输入你的出行需求");
   }
+  const routeContext = currentRoute || state.route;
   const response = await fetch(`${API_BASE_URL}/api/chat-route`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({
+      message,
+      currentRoute: routeContext ? routeToConfig(routeContext) : null,
+      currentPlaces: safeArray(routeContext?.nodes),
+      currentConstraints: state.lastRouteData?.constraints || state.constraints || {},
+      routeData: state.lastRouteData,
+      sessionId: state.sessionId,
+    }),
   });
   const data = await readApiResponse(response);
+  state.lastRouteData = data.routeData;
   return applyRouteData(data.routeData);
 }
 
@@ -593,6 +665,8 @@ function applyRouteData(routeData) {
   if (!routeData?.route || !Array.isArray(routeData.places)) {
     throw new Error("routeData is missing route or places");
   }
+  state.lastRouteData = routeData;
+  saveLastRouteCache(routeData);
   if (routeData.constraints) {
     state.constraints = routeData.constraints;
     state.constraintSummary = formatConstraintSummary(routeData.constraints);
@@ -608,9 +682,9 @@ function applyRouteData(routeData) {
 
 async function generateRouteData() {
   if (USE_BACKEND_API) {
-    return generateRouteFromApi();
+    return chatModifyRouteFromApi(state.inputText, state.route);
   }
-  return generateRouteLocal();
+  return { route: generateRouteLocal(), diff: null };
 }
 
 async function adjustRouteData(adjustmentType, currentRoute, targetNodeId) {
@@ -1214,6 +1288,7 @@ function startGeneration() {
   }
 
   const requestText = state.inputText;
+  const previousRoute = state.route ? clone(state.route) : null;
   setState({
     view: "loading",
     loadingStep: 0,
@@ -1233,16 +1308,20 @@ function startGeneration() {
         setState({ loadingStep: step });
       } else {
         try {
-          const route = await generateRouteData();
+          const result = await generateRouteData();
+          const route = result?.route;
           if (!route) throw new Error("路线生成失败了，请稍后重试。");
           setState({
             view: "result",
             loadingStep: 3,
+            previousRoute,
             route,
+            diff: result.diff || null,
             selectedNodeId: route.nodes[0]?.id,
             activeSegmentIndex: 0,
+            drawerOpen: Boolean(result.diff),
             errorMessage: "",
-            hint: "",
+            hint: route.hint || "",
           });
         } catch (error) {
           console.error(error);
@@ -1315,21 +1394,23 @@ async function submitNaturalAdjustment() {
 async function applyNodeAction(action, targetNodeId) {
   if (!state.route) return;
   const previousRoute = clone(state.route);
+  const isOrderMove = action === "moveUp" || action === "moveDown";
   setState({ naturalAdjustLoading: true, errorMessage: "" });
   try {
     const result = await adjustRouteActionFromApi(action, state.route, targetNodeId);
     if (!result) throw new Error("路线调整失败了，请稍后重试。");
     setState({
-      previousRoute,
+      previousRoute: isOrderMove ? null : previousRoute,
       route: result.route,
-      diff: result.diff,
+      diff: isOrderMove ? null : result.diff,
       selectedNodeId: action === "delete" ? result.route.nodes[0]?.id : targetNodeId,
       activeSegmentIndex: 0,
       activeAdjustment: null,
-      drawerOpen: true,
+      drawerOpen: isOrderMove ? false : true,
       naturalAdjustLoading: false,
       hint: result.route.hint || "",
     });
+    if (isOrderMove) showToast("顺序已更新");
   } catch (error) {
     console.error(error);
     setState({ naturalAdjustLoading: false, errorMessage: error?.message || "路线调整失败了，请稍后重试。" });
@@ -1369,22 +1450,15 @@ function moveNode(id, direction) {
 
   const recalculated = recalculateAfterManualChange(nextRoute, "已按你的顺序重算路线。");
   setState({
-    previousRoute,
+    previousRoute: null,
     route: recalculated,
     selectedNodeId: id,
     activeSegmentIndex: 0,
-    drawerOpen: true,
+    drawerOpen: false,
     hint: recalculated.hint || "",
-    diff: {
-      title: "顺序已调整",
-      action: "已重新计算总时长、步行距离和编号。",
-      rows: [
-        { label: "路线顺序", value: recalculated.nodes.map((item) => item.name).join(" → ") },
-        { label: "总时长", value: `${formatDuration(previousRoute.durationMinutes)} → ${formatDuration(recalculated.durationMinutes)}` },
-        { label: "步行距离", value: `${previousRoute.walkingKm}km → ${recalculated.walkingKm}km` },
-      ],
-    },
+    diff: null,
   });
+  showToast("顺序已更新");
 }
 
 function deleteNode(id) {
@@ -1470,6 +1544,57 @@ function restoreRoute() {
   showToast("已恢复原方案");
 }
 
+function restoreLastRoute() {
+  const cached = readLastRouteCache();
+  if (!cached?.routeData) {
+    setState({ restoreCandidate: null });
+    showToast("上次路线已过期，请重新规划");
+    return;
+  }
+
+  const startLocation = cached.startLocation || {};
+  if (cached.sessionId) state.sessionId = cached.sessionId;
+  state.startPointMode = startLocation.startPointMode || state.startPointMode;
+  state.userLocation = startLocation.userLocation || state.userLocation;
+  state.locationStatus = startLocation.locationStatus || state.locationStatus;
+  state.locationMessage = startLocation.locationMessage || state.locationMessage;
+
+  try {
+    const applied = applyRouteData(cached.routeData);
+    const route = applied.route;
+    setState({
+      view: "result",
+      route,
+      previousRoute: null,
+      diff: applied.diff || null,
+      selectedNodeId: route.nodes[0]?.id,
+      activeSegmentIndex: 0,
+      activeTab: "route",
+      drawerOpen: false,
+      restoreCandidate: null,
+      lastRouteData: cached.routeData,
+      sessionId: cached.sessionId || state.sessionId,
+      startPointMode: state.startPointMode,
+      userLocation: state.userLocation,
+      locationStatus: state.locationStatus,
+      locationMessage: state.locationMessage,
+      errorMessage: "",
+      hint: route.hint || "",
+    });
+    showToast("已恢复上次路线");
+  } catch (error) {
+    clearLastRouteCache();
+    console.error(error);
+    setState({ restoreCandidate: null });
+    showToast("上次路线恢复失败，请重新规划");
+  }
+}
+
+function clearRestorePrompt() {
+  clearLastRouteCache();
+  setState({ restoreCandidate: null });
+}
+
 function render() {
   if (state.view === "loading") {
     app.innerHTML = renderLoading();
@@ -1500,6 +1625,7 @@ function renderInput() {
         <h1>一句话，生成现在能走的路线</h1>
         <p>输入你现在的位置、时间、预算和想法，我会自动识别约束并给你一条可执行路线。</p>
       </div>
+      ${renderRestorePrompt()}
       <section class="agent-input-panel">
         <div class="agent-input-head">
           <span>告诉我你想怎么走</span>
@@ -1526,6 +1652,21 @@ function renderInput() {
       </section>
     </section>
     ${renderToast()}
+  `;
+}
+
+function renderRestorePrompt() {
+  if (!state.restoreCandidate) return "";
+  return `
+    <section class="restore-route-card">
+      <div>
+        <strong>发现你刚刚生成过一条路线，要继续查看吗？</strong>
+      </div>
+      <div class="restore-route-actions">
+        <button class="secondary" data-action="restoreLastRoute">继续上次路线</button>
+        <button class="ghost-btn" data-action="clearRestorePrompt">重新规划</button>
+      </div>
+    </section>
   `;
 }
 
@@ -2118,6 +2259,8 @@ function handleAction(event) {
     setState({ inputText: state.lastRequestText || state.inputText, errorMessage: "" });
     startGeneration();
   }
+  if (action === "restoreLastRoute") restoreLastRoute();
+  if (action === "clearRestorePrompt") clearRestorePrompt();
   if (action === "togglePreference") {
     const value = target.dataset.value;
     const exists = state.selectedPreferences.includes(value);
@@ -2169,4 +2312,5 @@ function handleAction(event) {
   if (action === "restoreRoute") restoreRoute();
 }
 
+state.restoreCandidate = readLastRouteCache();
 render();
