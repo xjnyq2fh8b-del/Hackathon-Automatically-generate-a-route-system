@@ -1017,8 +1017,9 @@ def _default_route_response(constraints: dict | None = None, message: str = "") 
 
 @app.post("/api/route/generate")
 def generate_route(request: TextRequest) -> dict:
-    parse_intent(request.input_text())
-    return _default_route_response()
+    intent = parse_intent(request.input_text())
+    constraints = _merge_constraints(request.activeConstraints, _constraints_patch_from_intent(intent))
+    return _default_route_response(constraints=constraints)
 
 
 @app.post("/api/chat-route")

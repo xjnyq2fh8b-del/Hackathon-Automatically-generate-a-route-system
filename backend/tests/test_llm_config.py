@@ -125,6 +125,29 @@ class LLMConfigTest(unittest.TestCase):
         self.assertEqual(set(response["routeData"]), ROUTE_DATA_KEYS)
         self.assertNotIn("routePatch", response["routeData"])
 
+    def test_generate_route_uses_llm_create_route_constraints(self) -> None:
+        llm_json = json.dumps(
+            {
+                "intent": "createRoute",
+                "origin": "湖滨银泰 in77",
+                "timeWindow": {"start": "14:00", "end": "18:00", "durationMinutes": 180},
+                "budgetMax": 120,
+                "companions": ["elder", "child"],
+                "preferences": ["rest", "less_walking"],
+                "avoid": [],
+                "strategy": "default",
+                "preferRest": True,
+                "preferLessWalking": True,
+            },
+            ensure_ascii=False,
+        )
+        with patch("backend.llm_client.call_llm_for_intent", return_value=llm_json):
+            route_data = generate_route(TextRequest(text="带老人小孩看西湖，不想走太多路"))["routeData"]
+        self.assertEqual(route_data["route"]["name"], "轻松休息友好线")
+        self.assertTrue(route_data["constraints"]["preferRest"])
+        self.assertTrue(route_data["constraints"]["preferLessWalking"])
+        self.assertEqual(route_data["constraints"]["budgetMax"], 120)
+
     def test_llm_valid_adjust_route_json_triggers_adjustment(self) -> None:
         llm_json = json.dumps(
             {
