@@ -15,6 +15,7 @@ from backend.poi_catalog import (
     is_open_at,
     load_poi_catalog_or_fallback,
     parse_opening_hours_text,
+    to_frontend_places,
     validate_poi_catalog,
     validate_poi_catalog_with_warnings,
     write_catalog_json,
@@ -23,6 +24,7 @@ from backend.app import adjust_route, AdjustRequest
 
 
 ROOT = Path(__file__).resolve().parents[2]
+ROUTE_DATA_KEYS = {"constraints", "places", "route", "diff", "message", "adjustmentButtons"}
 
 
 def sample_catalog() -> list[dict]:
@@ -46,6 +48,37 @@ class PoiCatalogTest(unittest.TestCase):
         self.assertIsInstance(catalog[0]["location"], dict)
         self.assertIn("lng", catalog[0]["location"])
         self.assertIn("lat", catalog[0]["location"])
+
+    def test_frontend_places_keep_manual_image_url_first(self) -> None:
+        places = to_frontend_places(
+            [
+                {
+                    "id": "manual",
+                    "name": "manual image",
+                    "type": "scenic",
+                    "imageUrl": "https://manual.example/image.jpg",
+                    "photos": [{"url": "https://amap.example/image.jpg"}],
+                }
+            ]
+        )
+        self.assertEqual(places[0]["imageUrl"], "https://manual.example/image.jpg")
+
+    def test_frontend_places_use_first_amap_photo_when_no_manual_image(self) -> None:
+        places = to_frontend_places(
+            [
+                {
+                    "id": "amap",
+                    "name": "amap image",
+                    "type": "scenic",
+                    "photos": [{"url": "https://amap.example/image.jpg"}],
+                }
+            ]
+        )
+        self.assertEqual(places[0]["imageUrl"], "https://amap.example/image.jpg")
+
+    def test_frontend_places_omit_image_url_when_missing(self) -> None:
+        places = to_frontend_places([{"id": "no-image", "name": "no image", "type": "scenic"}])
+        self.assertNotIn("imageUrl", places[0])
 
     def test_csv_can_be_written_to_json(self) -> None:
         catalog, result = csv_to_catalog(ROOT / "data" / "poiCatalog.sample.csv")
@@ -95,7 +128,7 @@ class PoiCatalogTest(unittest.TestCase):
 
     def test_route_api_shape_stays_stable(self) -> None:
         data = generate_route(TextRequest(text="test"))["routeData"]
-        self.assertEqual(set(data), {"constraints", "places", "route", "diff"})
+        self.assertEqual(set(data), ROUTE_DATA_KEYS)
 
     def test_opening_hours_period_validation(self) -> None:
         catalog = sample_catalog()

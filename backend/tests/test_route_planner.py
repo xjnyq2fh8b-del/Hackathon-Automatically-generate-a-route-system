@@ -12,6 +12,7 @@ from backend.route_planner import generate_adjusted_route, generate_default_rout
 
 
 ROOT = Path(__file__).resolve().parents[2]
+ROUTE_DATA_KEYS = {"constraints", "places", "route", "diff", "message", "adjustmentButtons"}
 
 
 def catalog() -> list[dict]:
@@ -30,8 +31,10 @@ def place_by_id(route_data: dict) -> dict[str, dict]:
 
 
 def assert_route_shape(testcase: unittest.TestCase, route_data: dict) -> None:
-    testcase.assertEqual(set(route_data), {"constraints", "places", "route", "diff"})
+    testcase.assertEqual(set(route_data), ROUTE_DATA_KEYS)
     testcase.assertNotIn("routePatch", route_data)
+    testcase.assertIsInstance(route_data["message"], str)
+    testcase.assertTrue(route_data["adjustmentButtons"])
     route = route_data["route"]
     place_ids = route["placeIds"]
     places = place_by_id(route_data)
@@ -112,7 +115,7 @@ class RoutePlannerApiTest(unittest.TestCase):
             app_module.POI_CATALOG_LOADED = False
             data = route_data_for()
             self.assertIn("in77", data["route"]["placeIds"])
-            self.assertEqual(set(data), {"constraints", "places", "route", "diff"})
+            self.assertEqual(set(data), ROUTE_DATA_KEYS)
         finally:
             app_module.POI_CATALOG_LOADED = original_loaded
 

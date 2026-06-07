@@ -2,7 +2,7 @@ import os
 import time
 from copy import deepcopy
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -67,6 +67,7 @@ app.add_middleware(
 class TextRequest(BaseModel):
     text: str = ""
     message: str = ""
+    activeConstraints: dict[str, Any] | None = None
 
     def input_text(self) -> str:
         return self.text or self.message
@@ -198,6 +199,15 @@ PLACE_BY_ID = {place["id"]: place for place in PLACES}
 ROOT_DIR = Path(__file__).resolve().parents[1]
 POI_CATALOG_PATH = ROOT_DIR / "data" / "poiCatalog.json"
 POI_CATALOG, POI_CATALOG_LOADED, POI_CATALOG_ERRORS = load_poi_catalog_or_fallback(POI_CATALOG_PATH, PLACES)
+
+
+ADJUSTMENT_BUTTONS = [
+    {"type": "restaurantBusy", "label": "餐厅排队太久"},
+    {"type": "budget100", "label": "预算降到100"},
+    {"type": "noCoffee", "label": "不想喝咖啡"},
+    {"type": "twoHours", "label": "只剩2小时"},
+    {"type": "photo", "label": "想更适合拍照"},
+]
 
 
 DEFAULT_ROUTE = {
@@ -394,41 +404,134 @@ LEGACY_ADJUSTMENT_ALIASES = {
 NATURAL_ORDER = ["in77", "brokenBridge", "photoPoint", "baitacoffee", "convenienceRest", "xinbailu", "nongtangli"]
 
 
-def _route_data(route: dict | None = None, diff: dict | None = None) -> dict:
+def _route_data(
+    route: dict | None = None,
+    diff: dict | None = None,
+    constraints: dict | None = None,
+    message: str = "",
+) -> dict:
     route_payload = deepcopy(route or DEFAULT_ROUTE)
     return {
-        "constraints": deepcopy(CONSTRAINTS),
+        "constraints": _constraints_payload(constraints),
         "places": _places_for_route(route_payload),
         "route": route_payload,
         "diff": deepcopy(diff),
+        "message": message,
+        "adjustmentButtons": deepcopy(ADJUSTMENT_BUTTONS),
     }
 
 
-def _catalog_route_data(planned: dict) -> dict:
+def _catalog_route_data(planned: dict, constraints: dict | None = None, message: str = "") -> dict:
     return {
-        "constraints": deepcopy(CONSTRAINTS),
+        "constraints": _constraints_payload(constraints),
         "places": deepcopy(planned["places"]),
         "route": deepcopy(planned["route"]),
         "diff": deepcopy(planned.get("diff")),
+        "message": message,
+        "adjustmentButtons": deepcopy(ADJUSTMENT_BUTTONS),
     }
 
 
-def _try_catalog_default_route() -> dict | None:
+def _try_catalog_default_route(constraints: dict | None = None, message: str = "") -> dict | None:
     if not POI_CATALOG_LOADED:
         return None
     try:
-        return _catalog_route_data(generate_default_route(POI_CATALOG))
+        return _catalog_route_data(generate_default_route(POI_CATALOG), constraints=constraints, message=message)
     except (RoutePlannerError, KeyError, TypeError, ValueError):
         return None
 
 
-def _try_catalog_adjusted_route(adjustment_type: str) -> dict | None:
+def _try_catalog_adjusted_route(
+    adjustment_type: str,
+    constraints: dict | None = None,
+    message: str = "",
+) -> dict | None:
     if not POI_CATALOG_LOADED:
         return None
     try:
-        return _catalog_route_data(generate_adjusted_route(adjustment_type, POI_CATALOG))
+        return _catalog_route_data(
+            generate_adjusted_route(adjustment_type, POI_CATALOG),
+            constraints=constraints,
+            message=message,
+        )
     except (RoutePlannerError, KeyError, TypeError, ValueError):
         return None
+
+
+def _constraints_payload(active_constraints: dict | None = None) -> dict:
+    payload = deepcopy(CONSTRAINTS)
+    constraints = deepcopy(active_constraints or {})
+    for key, value in constraints.items():
+        if value not in (None, "", []):
+            payload[key] = value
+    return payload
+
+
+def _merge_constraints(active_constraints: dict | None, constraints_patch: dict | None) -> dict:
+    merged = deepcopy(active_constraints) if isinstance(active_constraints, dict) else {}
+    patch = constraints_patch if isinstance(constraints_patch, dict) else {}
+    for key, value in patch.items():
+        if value in (None, "", []):
+            continue
+        if key == "avoidTypes":
+            existing = merged.get("avoidTypes", [])
+            if not isinstance(existing, list):
+                existing = []
+            incoming = value if isinstance(value, list) else [value]
+            merged["avoidTypes"] = sorted({item for item in [*existing, *incoming] if isinstance(item, str) and item})
+        else:
+            merged[key] = value
+    return merged
+
+
+def _constraints_patch_from_intent(intent: dict) -> dict:
+    patch = deepcopy(intent.get("constraintsPatch")) if isinstance(intent.get("constraintsPatch"), dict) else {}
+    adjustment_type = intent.get("adjustmentType")
+    if adjustment_type == "budget100":
+        patch["budgetMax"] = 100
+    elif adjustment_type == "noCoffee":
+        patch["avoidTypes"] = [*patch.get("avoidTypes", []), "coffee"] if isinstance(patch.get("avoidTypes"), list) else ["coffee"]
+    elif adjustment_type == "restaurantBusy":
+        patch["preferLowWait"] = True
+    elif adjustment_type == "twoHours":
+        patch["durationMinutes"] = 120
+    elif adjustment_type == "photo":
+        patch["preferPhoto"] = True
+
+    if isinstance(intent.get("budgetMax"), (int, float)) and not isinstance(intent.get("budgetMax"), bool):
+        patch["budgetMax"] = int(intent["budgetMax"])
+    time_window = intent.get("timeWindow")
+    if isinstance(time_window, dict) and isinstance(time_window.get("durationMinutes"), (int, float)):
+        patch["durationMinutes"] = int(time_window["durationMinutes"])
+    preferences = intent.get("preferences")
+    if isinstance(preferences, list):
+        if "low_wait" in preferences:
+            patch["preferLowWait"] = True
+        if "photo" in preferences:
+            patch["preferPhoto"] = True
+    avoid = intent.get("avoid")
+    if isinstance(avoid, list) and "coffee" in avoid:
+        patch["avoidTypes"] = [*patch.get("avoidTypes", []), "coffee"] if isinstance(patch.get("avoidTypes"), list) else ["coffee"]
+    return patch
+
+
+def _effective_adjustment(adjustment_type: str | None, constraints: dict) -> str | None:
+    avoid_types = constraints.get("avoidTypes", [])
+    if not isinstance(avoid_types, list):
+        avoid_types = []
+    budget_max = constraints.get("budgetMax")
+    duration_minutes = constraints.get("durationMinutes")
+    if isinstance(duration_minutes, (int, float)) and not isinstance(duration_minutes, bool) and duration_minutes <= 120:
+        return "twoHours"
+    if "coffee" in avoid_types:
+        return "noCoffee"
+    if isinstance(budget_max, (int, float)) and not isinstance(budget_max, bool) and budget_max <= 100:
+        return "budget100"
+    if constraints.get("preferPhoto") is True:
+        return "photo"
+    if constraints.get("preferLowWait") is True:
+        return "restaurantBusy"
+    return adjustment_type if adjustment_type in ADJUSTMENTS else None
 
 
 def _places_for_route(route: dict) -> list[dict]:
@@ -632,11 +735,11 @@ def parse_text(request: TextRequest) -> dict:
     return {"constraints": deepcopy(CONSTRAINTS)}
 
 
-def _default_route_response() -> dict:
-    catalog_route_data = _try_catalog_default_route()
+def _default_route_response(constraints: dict | None = None, message: str = "") -> dict:
+    catalog_route_data = _try_catalog_default_route(constraints=constraints, message=message)
     if catalog_route_data:
         return {"routeData": catalog_route_data}
-    return {"routeData": _route_data(diff=None)}
+    return {"routeData": _route_data(diff=None, constraints=constraints, message=message)}
 
 
 @app.post("/api/route/generate")
@@ -657,9 +760,19 @@ def chat_route_endpoint(request: TextRequest, http_request: Request) -> dict:
 def chat_route(request: TextRequest) -> dict:
     intent = parse_intent(request.input_text())
     adjustment_type = intent.get("adjustmentType") if intent.get("intent") == "adjustRoute" else None
-    if adjustment_type in ADJUSTMENTS:
-        return adjust_route(AdjustRequest(adjustmentType=adjustment_type))
-    return _default_route_response()
+    constraints = _merge_constraints(request.activeConstraints, _constraints_patch_from_intent(intent))
+    effective_adjustment = _effective_adjustment(adjustment_type, constraints)
+    if effective_adjustment in ADJUSTMENTS:
+        return _adjust_route_response(effective_adjustment, constraints=constraints)
+    return _default_route_response(constraints=constraints)
+
+
+def _adjust_route_response(adjustment_type: str, constraints: dict | None = None, message: str = "") -> dict:
+    catalog_route_data = _try_catalog_adjusted_route(adjustment_type, constraints=constraints, message=message)
+    if catalog_route_data:
+        return {"routeData": catalog_route_data}
+    route, diff = _shortcut_adjustment(adjustment_type)
+    return {"routeData": _route_data(route=route, diff=diff, constraints=constraints, message=message)}
 
 
 @app.post("/api/route/adjust")
@@ -668,11 +781,8 @@ def adjust_route(request: AdjustRequest) -> dict:
     adjustment_type = LEGACY_ADJUSTMENT_ALIASES.get(adjustment_type, adjustment_type)
 
     if adjustment_type in ADJUSTMENTS:
-        catalog_route_data = _try_catalog_adjusted_route(adjustment_type)
-        if catalog_route_data:
-            return {"routeData": catalog_route_data}
-        route, diff = _shortcut_adjustment(adjustment_type)
-        return {"routeData": _route_data(route=route, diff=diff)}
+        constraints = _constraints_patch_from_intent({"intent": "adjustRoute", "adjustmentType": adjustment_type})
+        return _adjust_route_response(adjustment_type, constraints=constraints)
 
     base_route = request.route or deepcopy(DEFAULT_ROUTE)
     if request.action and request.nodeId:

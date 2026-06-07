@@ -19,25 +19,48 @@ def parse_intent(message: str, currentRoute: dict | None = None) -> dict[str, An
 
 def parse_intent_with_rules(message: str) -> dict[str, Any]:
     text = (message or "").lower()
+    wants_no_coffee = _contains_any(text, ["不想喝咖啡", "不要咖啡", "不喝咖啡", "不想咖啡", "换个休息点", "换一个休息点", "no coffee"])
+    wants_budget100 = _contains_any(text, ["预算100", "100以内", "100内", "降到100", "便宜点", "省钱一点", "省钱", "太贵了", "预算", "budget"])
+    wants_low_wait = _contains_any(text, ["排队太久", "少排队", "人少点", "换一家餐厅", "餐厅太挤", "餐厅排队", "等位", "queue", "busy"])
+    wants_two_hours = _contains_any(text, ["只剩2小时", "只剩两小时", "两小时内", "2小时内", "时间不够", "快一点", "2小时", "两小时", "two hours"])
+    wants_photo = _contains_any(text, ["拍照", "出片", "适合拍照", "好看一点", "风景好", "photo"])
+
+    constraints_patch: dict[str, Any] = {}
+    if wants_budget100:
+        constraints_patch["budgetMax"] = 100
+    if wants_no_coffee:
+        constraints_patch["avoidTypes"] = ["coffee"]
+    if wants_low_wait:
+        constraints_patch["preferLowWait"] = True
+    if wants_two_hours:
+        constraints_patch["durationMinutes"] = 120
+    if wants_photo:
+        constraints_patch["preferPhoto"] = True
+
     adjustment_type = None
 
-    if any(keyword in text for keyword in ["排队", "等位", "queue", "busy"]):
-        adjustment_type = "restaurantBusy"
-    elif any(keyword in text for keyword in ["100", "预算", "便宜", "省钱", "budget"]):
-        adjustment_type = "budget100"
-    elif any(keyword in text for keyword in ["不要咖啡", "不喝咖啡", "不想喝咖啡", "no coffee"]):
-        adjustment_type = "noCoffee"
-    elif any(keyword in text for keyword in ["2小时", "两小时", "two hours"]):
+    if wants_two_hours:
         adjustment_type = "twoHours"
-    elif any(keyword in text for keyword in ["拍照", "出片", "photo"]):
+    elif wants_no_coffee:
+        adjustment_type = "noCoffee"
+    elif wants_budget100:
+        adjustment_type = "budget100"
+    elif wants_photo:
         adjustment_type = "photo"
+    elif wants_low_wait:
+        adjustment_type = "restaurantBusy"
 
     return {
         "source": "rules",
         "intent": "adjustRoute" if adjustment_type else "createRoute",
         "adjustmentType": adjustment_type,
+        "constraintsPatch": constraints_patch,
         "rawText": message or "",
     }
+
+
+def _contains_any(text: str, keywords: list[str]) -> bool:
+    return any(keyword in text for keyword in keywords)
 
 
 def _try_llm_intent(message: str, currentRoute: dict | None) -> dict[str, Any] | None:

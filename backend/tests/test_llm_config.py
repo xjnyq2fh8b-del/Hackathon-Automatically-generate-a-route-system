@@ -27,6 +27,7 @@ from backend.intent_parser import parse_intent
 
 
 ROOT = Path(__file__).resolve().parents[2]
+ROUTE_DATA_KEYS = {"constraints", "places", "route", "diff", "message", "adjustmentButtons"}
 
 
 class LLMConfigTest(unittest.TestCase):
@@ -120,7 +121,7 @@ class LLMConfigTest(unittest.TestCase):
         )
         with patch("backend.llm_client.call_llm_for_intent", return_value=llm_json):
             response = chat_route(TextRequest(text="下午想逛西湖喝咖啡吃晚饭"))
-        self.assertEqual(set(response["routeData"]), {"constraints", "places", "route", "diff"})
+        self.assertEqual(set(response["routeData"]), ROUTE_DATA_KEYS)
         self.assertNotIn("routePatch", response["routeData"])
 
     def test_llm_valid_adjust_route_json_triggers_adjustment(self) -> None:
@@ -135,7 +136,7 @@ class LLMConfigTest(unittest.TestCase):
         )
         with patch("backend.llm_client.call_llm_for_intent", return_value=llm_json):
             response = chat_route(TextRequest(text="餐厅排队太久，换一家"))
-        self.assertEqual(set(response["routeData"]), {"constraints", "places", "route", "diff"})
+        self.assertEqual(set(response["routeData"]), ROUTE_DATA_KEYS)
         self.assertIsInstance(response["routeData"]["diff"], dict)
         self.assertNotIn("routePatch", response["routeData"])
 
@@ -146,6 +147,19 @@ class LLMConfigTest(unittest.TestCase):
             "不想喝咖啡了": "noCoffee",
             "只剩2小时": "twoHours",
             "想更适合拍照": "photo",
+        }
+        with patch("backend.llm_client.call_llm_for_intent", return_value=None):
+            for text, expected in cases.items():
+                with self.subTest(text=text):
+                    self.assertEqual(parse_intent(text)["adjustmentType"], expected)
+
+    def test_extended_adjustment_phrases_parse_to_supported_types(self) -> None:
+        cases = {
+            "换个休息点": "noCoffee",
+            "太贵了，省钱一点": "budget100",
+            "人少点，换一家餐厅": "restaurantBusy",
+            "时间不够，快一点": "twoHours",
+            "风景好，好看一点": "photo",
         }
         with patch("backend.llm_client.call_llm_for_intent", return_value=None):
             for text, expected in cases.items():
@@ -163,6 +177,62 @@ class LLMConfigTest(unittest.TestCase):
             response = chat_route(TextRequest(message="不想喝咖啡了"))
         self.assertIn("routeData", response)
         self.assertIsInstance(response["routeData"]["diff"], dict)
+
+    def test_chat_route_returns_message_and_adjustment_buttons(self) -> None:
+        with patch("backend.llm_client.call_llm_for_intent", return_value=None):
+            route_data = chat_route(TextRequest(message="我想找个地方休息一下"))["routeData"]
+        self.assertEqual(set(route_data), ROUTE_DATA_KEYS)
+        self.assertIsInstance(route_data["message"], str)
+        self.assertTrue(route_data["adjustmentButtons"])
+
+    def test_budget100_updates_constraints(self) -> None:
+        with patch("backend.llm_client.call_llm_for_intent", return_value=None):
+            route_data = chat_route(TextRequest(message="预算降到100以内"))["routeData"]
+        self.assertEqual(route_data["constraints"]["budgetMax"], 100)
+        self.assertLessEqual(route_data["route"]["budgetPerPerson"], 100)
+
+    def test_no_coffee_updates_constraints(self) -> None:
+        with patch("backend.llm_client.call_llm_for_intent", return_value=None):
+            route_data = chat_route(TextRequest(message="不想喝咖啡了"))["routeData"]
+        self.assertIn("coffee", route_data["constraints"]["avoidTypes"])
+        place_types = [place["type"] for place in route_data["places"]]
+        self.assertNotIn("coffee", place_types)
+
+    def test_chat_route_merges_active_constraints(self) -> None:
+        with patch("backend.llm_client.call_llm_for_intent", return_value=None):
+            route_data = chat_route(
+                TextRequest(
+                    message="少排队",
+                    activeConstraints={"budgetMax": 100},
+                )
+            )["routeData"]
+        self.assertEqual(route_data["constraints"]["budgetMax"], 100)
+        self.assertTrue(route_data["constraints"]["preferLowWait"])
+        self.assertLessEqual(route_data["route"]["budgetPerPerson"], 100)
+
+    def test_chat_route_place_ids_exist_in_places(self) -> None:
+        with patch("backend.llm_client.call_llm_for_intent", return_value=None):
+            route_data = chat_route(TextRequest(message="想更适合拍照"))["routeData"]
+        place_ids = set(route_data["route"]["placeIds"])
+        response_place_ids = {place["id"] for place in route_data["places"]}
+        self.assertTrue(place_ids)
+        self.assertTrue(place_ids.issubset(response_place_ids))
+
+    def test_chat_route_adjustments_change_place_ids_and_diff(self) -> None:
+        messages = [
+            "餐厅排队太久",
+            "预算降到100以内",
+            "不想喝咖啡",
+            "只剩2小时",
+            "想更适合拍照",
+        ]
+        with patch("backend.llm_client.call_llm_for_intent", return_value=None):
+            default_ids = chat_route(TextRequest(message="我想找个地方休息一下"))["routeData"]["route"]["placeIds"]
+            for message in messages:
+                with self.subTest(message=message):
+                    route_data = chat_route(TextRequest(message=message))["routeData"]
+                    self.assertNotEqual(default_ids, route_data["route"]["placeIds"])
+                    self.assertIsInstance(route_data["diff"], dict)
 
     def test_route_api_response_does_not_include_llm_api_key(self) -> None:
         secret = "sk-test-should-not-leak"

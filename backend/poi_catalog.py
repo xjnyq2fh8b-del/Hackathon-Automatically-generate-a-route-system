@@ -61,6 +61,7 @@ FRONTEND_PLACE_FIELDS = {
     "note",
     "map",
     "location",
+    "imageUrl",
 }
 
 TIME_PATTERN = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
@@ -174,6 +175,9 @@ def to_frontend_places(pois: list[dict[str, Any]]) -> list[dict[str, Any]]:
     places: list[dict[str, Any]] = []
     for poi in pois:
         place = {key: deepcopy(value) for key, value in poi.items() if key in FRONTEND_PLACE_FIELDS}
+        image_url = _place_image_url(poi)
+        if image_url:
+            place["imageUrl"] = image_url
         if "openHoursText" in poi:
             place["openHoursText"] = poi.get("openHoursText", "")
             place.setdefault("openHours", poi.get("openHoursText", ""))
@@ -185,6 +189,21 @@ def to_frontend_places(pois: list[dict[str, Any]]) -> list[dict[str, Any]]:
         place.setdefault("reason", poi.get("note", ""))
         places.append(place)
     return places
+
+
+def _place_image_url(poi: dict[str, Any]) -> str:
+    image_url = poi.get("imageUrl")
+    if isinstance(image_url, str) and image_url.strip():
+        return image_url.strip()
+
+    photos = poi.get("photos")
+    if not isinstance(photos, list) or not photos:
+        return ""
+    first_photo = photos[0]
+    if not isinstance(first_photo, dict):
+        return ""
+    photo_url = first_photo.get("url")
+    return photo_url.strip() if isinstance(photo_url, str) and photo_url.strip() else ""
 
 
 def is_open_at(poi: dict[str, Any], day: int, time_text: str) -> bool | None:
