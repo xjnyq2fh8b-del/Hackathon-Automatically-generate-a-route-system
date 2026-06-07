@@ -173,6 +173,10 @@ class LLMConfigTest(unittest.TestCase):
             "我想找个地方休息一下": ("preferRest", True),
             "今天下雨，想室内少走路": ("weather", "rain"),
             "带老人小孩一起玩，少走路": ("preferLessWalking", True),
+            "想逛街买东西，顺路看西湖": ("preferShopping", True),
+            "想吃点小吃，便宜快点": ("preferSnack", True),
+            "想去断桥白堤这种经典西湖景点": ("preferClassicScenic", True),
+            "下午三点先吃饭": ("startTime", "15:00"),
         }
         with patch("backend.llm_client.call_llm_for_intent", return_value=None):
             for text, (key, expected) in cases.items():
@@ -180,6 +184,12 @@ class LLMConfigTest(unittest.TestCase):
                     intent = parse_intent(text)
                     self.assertEqual(intent["intent"], "createRoute")
                     self.assertEqual(intent["constraintsPatch"][key], expected)
+
+    def test_time_parser_does_not_treat_degree_words_as_clock_time(self) -> None:
+        with patch("backend.llm_client.call_llm_for_intent", return_value=None):
+            intent = parse_intent("想吃好一点的杭帮菜正餐")
+        self.assertNotIn("startTime", intent["constraintsPatch"])
+        self.assertTrue(intent["constraintsPatch"]["preferProperDinner"])
 
     def test_chat_route_survives_llm_request_failure(self) -> None:
         with patch("backend.llm_client.call_llm_for_intent", side_effect=RuntimeError("llm failed")):
@@ -255,6 +265,9 @@ class LLMConfigTest(unittest.TestCase):
             "我饿了，想先吃饭": "先吃饭再逛线",
             "想吃好一点的杭帮菜正餐": "杭帮正餐体验线",
             "今天下雨，想室内少走路": "室内缓冲少走路线",
+            "想逛街买东西，顺路看西湖": "湖滨逛街顺路线",
+            "想吃点小吃，便宜快点": "西湖小吃轻量线",
+            "想去断桥白堤这种经典西湖景点": "西湖经典打卡线",
         }
         with patch("backend.llm_client.call_llm_for_intent", return_value=None):
             default_ids = chat_route(TextRequest(message="我想现在出发逛西湖"))["routeData"]["route"]["placeIds"]

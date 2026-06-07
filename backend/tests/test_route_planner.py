@@ -8,7 +8,7 @@ from pathlib import Path
 import backend.app as app_module
 from backend.app import AdjustRequest, TextRequest, adjust_route, generate_route
 from backend.poi_catalog import calculate_route_budget
-from backend.route_planner import generate_adjusted_route, generate_default_route
+from backend.route_planner import generate_adjusted_route, generate_default_route, generate_route_for_constraints
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -38,6 +38,8 @@ def assert_route_shape(testcase: unittest.TestCase, route_data: dict) -> None:
     route = route_data["route"]
     place_ids = route["placeIds"]
     places = place_by_id(route_data)
+    testcase.assertGreaterEqual(len(place_ids), 3)
+    testcase.assertLessEqual(len(place_ids), 5)
     testcase.assertEqual(set(place_ids), set(places))
     testcase.assertEqual([item["placeId"] for item in route["timeline"]], place_ids)
     testcase.assertEqual(len(route["transportSegments"]), max(0, len(place_ids) - 1))
@@ -78,6 +80,43 @@ class RoutePlannerApiTest(unittest.TestCase):
         self.assertLessEqual(adjusted_budget, default_budget)
         self.assertLessEqual(adjusted_budget, 100)
 
+    def test_default_route_prefers_full_dinner_over_snack_dinner(self) -> None:
+        planned = generate_default_route(catalog())
+        dinner = next(poi for poi in planned["selectedPois"] if poi["type"] == "dinner")
+        self.assertNotIn("snack", dinner["experienceTags"])
+
+    def test_create_route_food_preferences_pick_different_food_nodes(self) -> None:
+        data = catalog()
+        default_route = generate_default_route(data)
+        proper_route = generate_route_for_constraints(data, {"preferProperDinner": True})
+        proper_dinner = next(
+            poi
+            for poi in proper_route["selectedPois"]
+            if poi["type"] == "dinner"
+        )
+        snack_node = next(
+            poi
+            for poi in generate_route_for_constraints(data, {"preferSnack": True})["selectedPois"]
+            if poi["type"] == "snack"
+        )
+        self.assertNotEqual(default_route["route"]["placeIds"], proper_route["route"]["placeIds"])
+        self.assertNotIn("snack", proper_dinner["experienceTags"])
+        self.assertIn("local-cuisine", proper_dinner["experienceTags"])
+        self.assertIn("snack", snack_node["experienceTags"])
+
+    def test_meal_first_avoids_closed_split_shift_restaurant(self) -> None:
+        planned = generate_route_for_constraints(catalog(), {"mealFirst": True, "startTime": "15:00"})
+        dinner = next(poi for poi in planned["selectedPois"] if poi["type"] == "dinner")
+        self.assertNotEqual(dinner["id"], "dinner_xinbailu_hubin88")
+        self.assertEqual(planned["route"]["timeline"][0]["arrive"], "15:00")
+
+    def test_closed_status_uses_open_hours_text_when_structured_hours_missing(self) -> None:
+        data = catalog()
+        xinbailu = next(poi for poi in data if poi["id"] == "dinner_xinbailu_hubin88")
+        self.assertEqual(xinbailu["openingHours"], [])
+        planned = generate_route_for_constraints(data, {"mealFirst": True, "startTime": "15:00"})
+        self.assertNotIn("dinner_xinbailu_hubin88", planned["route"]["placeIds"])
+
     def test_no_coffee_route_contains_no_coffee_type(self) -> None:
         data = route_data_for("noCoffee")
         types = [place["type"] for place in data["places"]]
@@ -88,6 +127,20 @@ class RoutePlannerApiTest(unittest.TestCase):
         adjusted = route_data_for("twoHours")
         self.assertLess(len(adjusted["route"]["placeIds"]), len(default["route"]["placeIds"]))
         self.assertLessEqual(adjusted["route"]["durationMinutes"], 120)
+
+    def test_timeline_stay_minutes_are_clamped_by_place_type(self) -> None:
+        planned = generate_route_for_constraints(catalog(), {"preferProperDinner": True})
+        places = {poi["id"]: poi for poi in planned["selectedPois"]}
+        for item in planned["route"]["timeline"]:
+            poi = places[item["placeId"]]
+            arrive_hour, arrive_minute = [int(part) for part in item["arrive"].split(":")]
+            leave_hour, leave_minute = [int(part) for part in item["leave"].split(":")]
+            stay = (leave_hour * 60 + leave_minute) - (arrive_hour * 60 + arrive_minute)
+            if poi["type"] == "start":
+                self.assertLessEqual(stay, 5)
+            if poi["type"] == "dinner":
+                self.assertGreaterEqual(stay, 50)
+                self.assertLessEqual(stay, 75)
 
     def test_photo_route_prefers_high_photo_score_node(self) -> None:
         planned = generate_adjusted_route("photo", catalog())

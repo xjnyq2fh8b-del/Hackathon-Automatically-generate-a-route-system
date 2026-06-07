@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from backend import llm_client
@@ -29,6 +30,9 @@ def parse_intent_with_rules(message: str) -> dict[str, Any]:
     wants_rest = _contains_any(text, ["休息一下", "坐一会", "坐一下", "歇一会", "找个地方休息", "想休息", "走累了"])
     wants_indoor = _contains_any(text, ["下雨", "雨天", "室内", "太热", "太冷", "避雨", "有遮挡"])
     wants_less_walking = _contains_any(text, ["少走路", "别走太多", "不要走太久", "走不动", "老人", "老年人", "小孩", "孩子", "带娃", "亲子", "累了"])
+    wants_shopping = _contains_any(text, ["逛街", "商场", "买东西", "购物", "逛商场", "湖滨银泰", "嘉里中心"])
+    wants_snack = _contains_any(text, ["小吃", "随便吃点", "吃点小吃", "快点吃", "便宜吃", "简单吃"])
+    wants_classic_scenic = _contains_any(text, ["经典西湖", "断桥", "白堤", "必打卡", "经典景点", "西湖经典"])
     has_elder = _contains_any(text, ["老人", "老年人", "长辈", "爸妈", "父母"])
     has_child = _contains_any(text, ["小孩", "孩子", "带娃", "亲子", "儿童"])
 
@@ -55,6 +59,15 @@ def parse_intent_with_rules(message: str) -> dict[str, Any]:
         constraints_patch["weather"] = "rain"
     if wants_less_walking:
         constraints_patch["preferLessWalking"] = True
+    if wants_shopping:
+        constraints_patch["preferShopping"] = True
+    if wants_snack:
+        constraints_patch["preferSnack"] = True
+    if wants_classic_scenic:
+        constraints_patch["preferClassicScenic"] = True
+    start_time = _extract_start_time(text)
+    if start_time:
+        constraints_patch["startTime"] = start_time
     companions = []
     if has_elder:
         companions.append("elder")
@@ -87,6 +100,49 @@ def parse_intent_with_rules(message: str) -> dict[str, Any]:
 
 def _contains_any(text: str, keywords: list[str]) -> bool:
     return any(keyword in text for keyword in keywords)
+
+
+def _extract_start_time(text: str) -> str | None:
+    match = re.search(r"(下午|晚上|中午|上午|早上)?\s*(\d{1,2}|一|二|两|三|四|五|六|七|八|九|十|十一|十二)\s*[点:：]\s*(\d{1,2})?", text)
+    if not match:
+        return None
+    period, hour_text, minute_text = match.groups()
+    if not period and not hour_text.isdigit():
+        return None
+    hour = _parse_hour(hour_text)
+    if hour is None:
+        return None
+    minute = int(minute_text) if minute_text else 0
+    if minute < 0 or minute > 59:
+        return None
+    if period in {"下午", "晚上"} and hour < 12:
+        hour += 12
+    if period == "中午" and hour < 11:
+        hour += 12
+    if hour < 0 or hour > 23:
+        return None
+    return f"{hour:02d}:{minute:02d}"
+
+
+def _parse_hour(value: str) -> int | None:
+    if value.isdigit():
+        return int(value)
+    chinese_hours = {
+        "一": 1,
+        "二": 2,
+        "两": 2,
+        "三": 3,
+        "四": 4,
+        "五": 5,
+        "六": 6,
+        "七": 7,
+        "八": 8,
+        "九": 9,
+        "十": 10,
+        "十一": 11,
+        "十二": 12,
+    }
+    return chinese_hours.get(value)
 
 
 def _try_llm_intent(message: str, currentRoute: dict | None) -> dict[str, Any] | None:
@@ -155,7 +211,7 @@ def _coerce_create_route(response: dict[str, Any]) -> dict[str, Any] | None:
         "avoid": avoid if isinstance(avoid, list) else [],
         "strategy": response.get("strategy") or "default",
     }
-    for key in ("mealFirst", "preferRest", "preferIndoor", "preferLessWalking", "preferProperDinner"):
+    for key in ("mealFirst", "preferRest", "preferIndoor", "preferLessWalking", "preferProperDinner", "preferShopping", "preferSnack", "preferClassicScenic"):
         if isinstance(response.get(key), bool):
             result[key] = response[key]
     weather = response.get("weather")

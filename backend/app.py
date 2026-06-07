@@ -474,7 +474,14 @@ def _constraints_payload(active_constraints: dict | None = None) -> dict:
 def _constraint_chips(constraints: dict) -> list[dict[str, str]]:
     chips = [{"key": "出发地", "value": "湖滨银泰 in77"}]
     duration = constraints.get("durationMinutes")
-    chips.append({"key": "时间", "value": f"{int(duration)}分钟内" if isinstance(duration, (int, float)) and not isinstance(duration, bool) else "14:00-18:00"})
+    start_time = constraints.get("startTime")
+    if isinstance(duration, (int, float)) and not isinstance(duration, bool):
+        time_label = f"{int(duration)}分钟内"
+    elif isinstance(start_time, str) and start_time:
+        time_label = f"{start_time}出发"
+    else:
+        time_label = "14:00-18:00"
+    chips.append({"key": "时间", "value": time_label})
     budget = constraints.get("budgetMax")
     chips.append({"key": "预算", "value": f"人均{int(budget)}以内" if isinstance(budget, (int, float)) and not isinstance(budget, bool) else "人均150"})
 
@@ -496,6 +503,12 @@ def _constraint_chips(constraints: dict) -> list[dict[str, str]]:
         preferences.append("室内优先")
     if constraints.get("preferLessWalking") is True:
         preferences.append("少走路")
+    if constraints.get("preferShopping") is True:
+        preferences.append("逛街")
+    if constraints.get("preferSnack") is True:
+        preferences.append("小吃")
+    if constraints.get("preferClassicScenic") is True:
+        preferences.append("经典景点")
     chips.append({"key": "偏好", "value": "、".join(preferences) if preferences else "少排队"})
 
     companions = constraints.get("companions", [])
@@ -543,6 +556,10 @@ def _constraints_patch_from_intent(intent: dict) -> dict:
     time_window = intent.get("timeWindow")
     if isinstance(time_window, dict) and isinstance(time_window.get("durationMinutes"), (int, float)):
         patch["durationMinutes"] = int(time_window["durationMinutes"])
+    if isinstance(time_window, dict) and isinstance(time_window.get("start"), str):
+        start_time = time_window["start"].strip()
+        if len(start_time) == 5 and start_time[2] == ":":
+            patch["startTime"] = start_time
     preferences = intent.get("preferences")
     if isinstance(preferences, list):
         if "low_wait" in preferences:
@@ -559,10 +576,16 @@ def _constraints_patch_from_intent(intent: dict) -> dict:
             patch["preferIndoor"] = True
         if any(item in preferences for item in ["less_walking", "short_walk", "family", "elder", "child"]):
             patch["preferLessWalking"] = True
+        if any(item in preferences for item in ["shopping", "mall", "buy"]):
+            patch["preferShopping"] = True
+        if any(item in preferences for item in ["snack", "quick_food", "light_meal"]):
+            patch["preferSnack"] = True
+        if any(item in preferences for item in ["classic", "classic_scenic", "must_visit"]):
+            patch["preferClassicScenic"] = True
     avoid = intent.get("avoid")
     if isinstance(avoid, list) and "coffee" in avoid:
         patch["avoidTypes"] = [*patch.get("avoidTypes", []), "coffee"] if isinstance(patch.get("avoidTypes"), list) else ["coffee"]
-    for key in ("mealFirst", "preferRest", "preferIndoor", "preferLessWalking", "preferProperDinner"):
+    for key in ("mealFirst", "preferRest", "preferIndoor", "preferLessWalking", "preferProperDinner", "preferShopping", "preferSnack", "preferClassicScenic"):
         if intent.get(key) is True:
             patch[key] = True
     weather = intent.get("weather")

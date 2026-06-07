@@ -39,6 +39,9 @@ createRoute 输出格式：
   "preferIndoor": false,
   "preferLessWalking": false,
   "preferProperDinner": false,
+  "preferShopping": false,
+  "preferSnack": false,
+  "preferClassicScenic": false,
   "weather": null
 }
 
@@ -64,7 +67,10 @@ adjustRoute 输出格式：
 想吃好一点、杭帮菜、正餐、正式吃饭 -> preferProperDinner true。
 休息一下、坐一会儿、找个地方歇 -> preferRest true。
 下雨、太热、太冷、室内 -> preferIndoor true，并在下雨时 weather 为 rain。
-老人、小孩、少走路、走不动、累了 -> preferLessWalking true，并保留 companions。"""
+老人、小孩、少走路、走不动、累了 -> preferLessWalking true，并保留 companions。
+逛街、商场、买东西、购物 -> preferShopping true。
+小吃、随便吃点、快点吃、便宜吃 -> preferSnack true。
+经典西湖、断桥、白堤、必打卡 -> preferClassicScenic true。"""
 
 
 @dataclass(frozen=True, repr=False)
