@@ -1,6 +1,69 @@
 const app = document.querySelector("#app");
-const API_BASE_URL = "http://127.0.0.1:8000";
+const API_BASE_URL = (window.ROUTE_AGENT_CONFIG?.API_BASE_URL || "https://route-backend-amyh.onrender.com").replace(/\/$/, "");
 const USE_BACKEND_API = true;
+const LAST_ROUTE_STORAGE_KEY = "westlake:lastRouteData";
+const LAST_ROUTE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+const AMAP_KEY = window.ROUTE_AGENT_CONFIG?.AMAP_KEY || "";
+const AMAP_SECURITY_JS_CODE = window.ROUTE_AGENT_CONFIG?.AMAP_SECURITY_JS_CODE || "";
+const AMAP_SCRIPT_ID = "amap-js-api";
+const AMAP_MAP_CONTAINER_ID = "route-amap";
+const HUBIN_IN77_START = { lng: 120.163749, lat: 30.25283, name: "湖滨 in77" };
+const HUBIN_NEAR_RADIUS_KM = 3;
+const HUBIN_SERVICE_RADIUS_KM = 10;
+const VIRTUAL_ORIGIN_ID = "__current_location_origin";
+
+const adjustmentMessageByType = {
+  restaurantBusy: "餐厅排队太久，帮我换一个不用等太久的餐厅",
+  budget100: "预算降到100，帮我重新规划一条人均100以内的路线",
+  noCoffee: "不想喝咖啡，帮我删掉咖啡相关安排并保持路线顺路",
+  twoHours: "现在只剩2小时，帮我压缩成2小时内能走完的路线",
+  photo: "想更适合拍照，帮我调整成更适合拍照的路线",
+};
+
+// placeId fallback covers high-frequency demo POIs.
+const fallbackImageByPlaceId = {
+  start_in77_hubin: "./assets/poi/start_in77_hubin.jpg",
+  scenic_broken_bridge: "./assets/poi/scenic_broken_bridge.jpg",
+  scenic_baidi: "./assets/poi/scenic_baidi.jpg",
+  scenic_hubin_qingyu: "./assets/poi/scenic_hubin_qingyu.jpg",
+  scenic_hubin_park: "./assets/poi/scenic_hubin_park.jpg",
+  photo_yuebo_pavilion: "./assets/poi/photo_yuebo_pavilion.jpg",
+  photo_fourth_park: "./assets/poi/photo_fourth_park.jpg",
+  photo_yigongyuan_pier: "./assets/poi/photo_yigongyuan_pier.jpg",
+  photo_westlake_stone: "./assets/poi/photo_westlake_stone.jpg",
+  coffee_cosmic_joy: "./assets/poi/coffee_cosmic_joy.jpg",
+  coffee_starbucks_duanqiao: "./assets/poi/coffee_starbucks_duanqiao.jpg",
+  coffee_starbucks_kerry: "./assets/poi/coffee_starbucks_kerry.jpg",
+  coffee_peets_kerry: "./assets/poi/coffee_peets_kerry.jpg",
+  dinner_xinbailu_hubin88: "./assets/poi/dinner_xinbailu_hubin88.jpg",
+  dinner_wangjiangmen_xiaolongxia: "./assets/poi/dinner_wangjiangmen_xiaolongxia.jpg",
+  dinner_xinbailu_longyou: "./assets/poi/dinner_xinbailu_longyou.jpg",
+  dinner_yinhu_hangwei: "./assets/poi/dinner_yinhu_hangwei.jpg",
+  dinner_xinfeng_qingchun: "./assets/poi/dinner_xinfeng_qingchun.jpg",
+  dinner_yanlanlou_fountain: "./assets/poi/dinner_yanlanlou_fountain.jpg",
+  mall_in77_b: "./assets/poi/mall_in77_b.jpg",
+  mall_kerry_center: "./assets/poi/mall_kerry_center.jpg",
+  mall_hubin88: "./assets/poi/mall_hubin88.jpg",
+  rest_hubin_pedestrian: "./assets/poi/rest_hubin_pedestrian.jpg",
+  snack_panfangchun_jianjiao: "./assets/poi/snack_panfangchun_jianjiao.jpg",
+  snack_mizong_dabao: "./assets/poi/snack_mizong_dabao.jpg",
+  in77: "./assets/poi/start_in77_hubin.jpg",
+  brokenBridge: "./assets/poi/scenic_broken_bridge.jpg",
+  xinbailu: "./assets/poi/dinner_xinbailu_hubin88.jpg",
+  convenienceRest: "./assets/poi/rest_hubin_pedestrian.jpg",
+};
+
+// type fallback covers new backend POIs or places without dedicated images.
+const fallbackImageByType = {
+  start: "./assets/poi/start_in77_hubin.jpg",
+  scenic: "./assets/poi/scenic_broken_bridge.jpg",
+  photo: "./assets/poi/photo_fourth_park.jpg",
+  coffee: "./assets/poi/coffee_cosmic_joy.jpg",
+  dinner: "./assets/poi/dinner_xinbailu_hubin88.jpg",
+  mall: "./assets/poi/mall_in77_b.jpg",
+  rest: "./assets/poi/rest_hubin_pedestrian.jpg",
+  snack: "./assets/poi/snack_panfangchun_jianjiao.jpg",
+};
 
 const mockRouteData = {
   input: {
@@ -334,6 +397,13 @@ const mockRouteData = {
 let placeById = Object.fromEntries(mockRouteData.places.map((place) => [place.id, place]));
 const typeText = mockRouteData.labels.typeText;
 const typeIcon = mockRouteData.labels.typeIcon;
+const amapRuntime = {
+  loadPromise: null,
+  map: null,
+  markers: [],
+  polyline: null,
+  container: null,
+};
 
 let state = {
   view: "input",
@@ -345,50 +415,128 @@ let state = {
   previousRoute: null,
   diff: null,
   selectedNodeId: null,
+  activeSegmentIndex: 0,
   activeTab: "route",
   drawerOpen: false,
   transportOpen: false,
   expandedNodes: [],
+  expandedDetails: [],
   activeAdjustment: null,
+  naturalAdjustText: "",
+  naturalAdjustLoading: false,
+  constraints: mockRouteData.constraints,
+  constraintSummary: "",
+  errorMessage: "",
+  lastRequestText: "",
+  lastRouteData: null,
+  sessionId: "local-demo-session",
+  restoreCandidate: null,
   toast: "",
   hint: "",
+  mapStatus: "idle",
+  mapMessage: "",
+  startPointMode: "default",
+  userLocation: null,
+  locationStatus: "idle",
+  locationMessage: "",
 };
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
-function getPlace(id) {
-  return clone(placeById[id]);
+function getStartLocationSnapshot() {
+  return {
+    startPointMode: state.startPointMode,
+    userLocation: state.userLocation,
+    locationStatus: state.locationStatus,
+    locationMessage: state.locationMessage,
+  };
 }
 
-function resolveRoute(routeConfig, optimizedPlaces = null) {
-  const optimizedOrder = Array.isArray(routeConfig.order) && routeConfig.order.length
-    ? routeConfig.order
-    : Array.isArray(optimizedPlaces) && optimizedPlaces.length
-      ? optimizedPlaces.map((place) => place.id)
-      : routeConfig.placeIds;
-  const routeConfigWithOrder = {
-    ...routeConfig,
-    placeIds: optimizedOrder,
+function saveLastRouteCache(routeData) {
+  if (!routeData || typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(
+      LAST_ROUTE_STORAGE_KEY,
+      JSON.stringify({
+        routeData,
+        savedAt: Date.now(),
+        sessionId: state.sessionId,
+        activeStepIndex: state.activeSegmentIndex || 0,
+        startLocation: getStartLocationSnapshot(),
+      }),
+    );
+  } catch (error) {
+    console.warn("Failed to save last route", error);
+  }
+}
+
+function clearLastRouteCache() {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.removeItem(LAST_ROUTE_STORAGE_KEY);
+  } catch (error) {
+    console.warn("Failed to clear last route", error);
+  }
+}
+
+function readLastRouteCache() {
+  if (typeof localStorage === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(LAST_ROUTE_STORAGE_KEY);
+    if (!raw) return null;
+    const cached = JSON.parse(raw);
+    const savedAt = Number(cached?.savedAt);
+    if (!cached?.routeData || !Number.isFinite(savedAt) || Date.now() - savedAt > LAST_ROUTE_MAX_AGE_MS) {
+      clearLastRouteCache();
+      return null;
+    }
+    return cached;
+  } catch (error) {
+    clearLastRouteCache();
+    console.warn("Failed to read last route", error);
+    return null;
+  }
+}
+
+function getPlace(id) {
+  if (placeById[id]) return clone(placeById[id]);
+  return {
+    id,
+    type: "rest",
+    name: "地点待确认",
+    shortName: "地点待确认",
+    address: "",
+    openHours: "",
+    rating: "",
+    price: "",
+    tags: [],
+    reason: "",
+    note: "",
+    map: { x: 50, y: 50 },
   };
-  const timelineByPlace = Object.fromEntries(routeConfigWithOrder.timeline.map((item) => [item.placeId, item]));
-  const transportSegments = routeConfigWithOrder.transportSegments.map((segment) => {
+}
+
+function resolveRoute(routeConfig) {
+  const placeIds = safeArray(routeConfig.placeIds);
+  const timelineByPlace = Object.fromEntries(safeArray(routeConfig.timeline).map((item) => [item.placeId, item]));
+  const transportSegments = safeArray(routeConfig.transportSegments).map((segment) => {
     const from = placeById[segment.fromId];
     const to = placeById[segment.toId];
     return {
       ...clone(segment),
-      from: from.name,
-      to: to.name,
+      from: from?.name || "",
+      to: to?.name || "",
       arriveAt: timelineByPlace[segment.toId]?.arrive || "",
     };
   });
 
-  const nodes = routeConfigWithOrder.placeIds.map((placeId, index) => {
+  const nodes = placeIds.map((placeId, index) => {
     const place = getPlace(placeId);
     const time = timelineByPlace[placeId] || {};
     const segment = transportSegments[index];
-    const nextPlace = routeConfigWithOrder.placeIds[index + 1] ? placeById[routeConfigWithOrder.placeIds[index + 1]] : null;
+    const nextPlace = placeIds[index + 1] ? placeById[placeIds[index + 1]] : null;
 
     return {
       ...place,
@@ -442,68 +590,68 @@ function adjustRouteLocal(adjustmentType, currentRoute, targetNodeId) {
 }
 
 async function generateRouteFromApi() {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/route/generate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: state.inputText }),
-    });
-    const data = await readApiResponse(response);
-    return applyRouteData(data.routeData).route;
-  } catch (error) {
-    console.error(error);
-    return null;
-  }
+  return chatModifyRouteFromApi(state.inputText, null);
 }
 
 async function adjustRouteFromApi(adjustmentType, currentRoute, targetNodeId) {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/route/adjust`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        adjustmentType,
-        nodeId: targetNodeId,
-        route: routeToConfig(currentRoute),
-      }),
-    });
-    const data = await readApiResponse(response);
-    return {
-      ...applyRouteData(data.routeData),
-      targetNodeId,
-    };
-  } catch (error) {
-    console.error(error);
-    showToast("Backend API unavailable");
-    return null;
-  }
+  const message = adjustmentMessageByType[adjustmentType] || "帮我根据当前情况调整路线";
+  const result = await chatRouteFromApi(message, currentRoute);
+  return {
+    ...result,
+    targetNodeId,
+  };
 }
 
 async function adjustRouteActionFromApi(action, currentRoute, targetNodeId) {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/route/adjust`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action,
-        nodeId: targetNodeId,
-        route: routeToConfig(currentRoute),
-      }),
-    });
-    const data = await readApiResponse(response);
-    return {
-      ...applyRouteData(data.routeData),
-      targetNodeId,
-    };
-  } catch (error) {
-    console.error(error);
-    showToast("Backend API unavailable");
-    return null;
+  const target = currentRoute?.nodes?.find((node) => node.id === targetNodeId);
+  const targetName = target?.name || "当前地点";
+  const messageByAction = {
+    replace: `帮我把${targetName}换成更合适的地点，并保持路线顺路`,
+    delete: `帮我删掉${targetName}，并重新规划剩下路线`,
+    moveUp: `帮我把${targetName}提前一点，并重新规划路线顺序`,
+    moveDown: `帮我把${targetName}往后放一点，并重新规划路线顺序`,
+  };
+  const result = await chatRouteFromApi(messageByAction[action] || "帮我调整当前路线", currentRoute);
+  return {
+    ...result,
+    targetNodeId,
+  };
+}
+
+async function chatRouteFromApi(text, currentRoute) {
+  return chatModifyRouteFromApi(text, currentRoute);
+}
+
+async function chatModifyRouteFromApi(text, currentRoute) {
+  const message = String(text || "").trim();
+  if (!message) {
+    throw new Error("请输入你的出行需求");
   }
+  const routeContext = currentRoute || state.route;
+  const response = await fetch(`${API_BASE_URL}/api/chat-route`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message,
+      currentRoute: routeContext ? routeToConfig(routeContext) : null,
+      currentPlaces: safeArray(routeContext?.nodes),
+      currentConstraints: state.lastRouteData?.constraints || state.constraints || {},
+      routeData: state.lastRouteData,
+      sessionId: state.sessionId,
+    }),
+  });
+  const data = await readApiResponse(response);
+  state.lastRouteData = data.routeData;
+  return applyRouteData(data.routeData);
 }
 
 async function readApiResponse(response) {
-  const data = await response.json();
+  let data = null;
+  try {
+    data = await response.json();
+  } catch {
+    throw new Error("路线服务返回异常，请稍后重试");
+  }
   if (!response.ok) {
     throw new Error(data?.message || data?.detail || `API request failed: ${response.status}`);
   }
@@ -517,13 +665,15 @@ function applyRouteData(routeData) {
   if (!routeData?.route || !Array.isArray(routeData.places)) {
     throw new Error("routeData is missing route or places");
   }
-  const orderedPlaces = Array.isArray(routeData.optimizedPlaces) && routeData.optimizedPlaces.length
-    ? routeData.optimizedPlaces
-    : routeData.places;
-  placeById = Object.fromEntries(orderedPlaces.map((place) => [place.id, place]));
-  const route = resolveRoute(routeData.route, orderedPlaces);
+  state.lastRouteData = routeData;
+  saveLastRouteCache(routeData);
+  if (routeData.constraints) {
+    state.constraints = routeData.constraints;
+    state.constraintSummary = formatConstraintSummary(routeData.constraints);
+  }
+  placeById = Object.fromEntries(routeData.places.map((place) => [place.id, place]));
+  const route = resolveRoute(routeData.route);
   route.hint = routeData.message || "";
-  route.debug = routeData.debug || null;
   return {
     route,
     diff: routeData.diff || null,
@@ -532,9 +682,9 @@ function applyRouteData(routeData) {
 
 async function generateRouteData() {
   if (USE_BACKEND_API) {
-    return generateRouteFromApi();
+    return chatModifyRouteFromApi(state.inputText, state.route);
   }
-  return generateRouteLocal();
+  return { route: generateRouteLocal(), diff: null };
 }
 
 async function adjustRouteData(adjustmentType, currentRoute, targetNodeId) {
@@ -545,10 +695,464 @@ async function adjustRouteData(adjustmentType, currentRoute, targetNodeId) {
 }
 
 function formatDuration(minutes) {
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
+  const value = Number(minutes);
+  if (!Number.isFinite(value)) return "时长待确认";
+  const hours = Math.floor(value / 60);
+  const rest = value % 60;
   if (!hours) return `${rest}分钟`;
   return `${hours}小时${String(rest).padStart(2, "0")}分钟`;
+}
+
+function hasValue(value) {
+  return value !== undefined && value !== null && value !== "" && !Number.isNaN(value);
+}
+
+function displayText(value, fallback) {
+  return hasValue(value) ? escapeHtml(value) : fallback;
+}
+
+function displayBudget(value) {
+  return hasValue(value) ? `${escapeHtml(value)}元` : "预算待确认";
+}
+
+function displayDistance(value) {
+  return hasValue(value) ? `${escapeHtml(value)}km` : "距离待确认";
+}
+
+function displayWaitRisk(value) {
+  return hasValue(value) ? escapeHtml(value) : "等待待确认";
+}
+
+function safeArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function getPoiLngLat(place) {
+  const candidates = [
+    [place?.lng, place?.lat],
+    [place?.longitude, place?.latitude],
+    [place?.map?.lng, place?.map?.lat],
+  ];
+
+  if (typeof place?.location === "string") {
+    const [lng, lat] = place.location.split(",").map(Number);
+    candidates.push([lng, lat]);
+  }
+
+  if (place?.location && typeof place.location === "object") {
+    candidates.push([place.location.lng, place.location.lat]);
+    candidates.push([place.location.longitude, place.location.latitude]);
+  }
+
+  if (Array.isArray(place?.coordinates)) candidates.push(place.coordinates);
+  if (Array.isArray(place?.coordinate)) candidates.push(place.coordinate);
+
+  for (const [lngValue, latValue] of candidates) {
+    const lng = Number(lngValue);
+    const lat = Number(latValue);
+    if (Number.isFinite(lng) && Number.isFinite(lat)) return [lng, lat];
+  }
+
+  return null;
+}
+
+function shouldUseCurrentLocationOrigin() {
+  return state.startPointMode === "currentLocation" && Boolean(getPoiLngLat(state.userLocation));
+}
+
+function isDefaultStartNode(node) {
+  if (!node) return false;
+  const id = String(node.id || "");
+  return node.type === "start" || id === "in77" || id === "start_in77_hubin";
+}
+
+function getVirtualOriginNode(route) {
+  if (!shouldUseCurrentLocationOrigin()) return null;
+  const firstNode = safeArray(route?.nodes)[0] || {};
+  const location = state.userLocation || {};
+  return {
+    id: VIRTUAL_ORIGIN_ID,
+    type: "currentLocation",
+    name: "我的位置",
+    shortName: "我的位置",
+    address: "已使用你的实时定位作为出发点",
+    arrive: firstNode.arrive || "",
+    leave: firstNode.leave || "",
+    lng: location.lng,
+    lat: location.lat,
+    isVirtualOrigin: true,
+  };
+}
+
+function getDisplayRouteNodes(route) {
+  const nodes = safeArray(route?.nodes);
+  const virtualOrigin = getVirtualOriginNode(route);
+  if (!virtualOrigin) return nodes;
+  const startOffset = isDefaultStartNode(nodes[0]) ? 1 : 0;
+  return [virtualOrigin, ...nodes.slice(startOffset)];
+}
+
+function buildVirtualOriginSegment(route, toNode) {
+  const fromNode = getVirtualOriginNode(route);
+  const fromLngLat = getPoiLngLat(fromNode);
+  const toLngLat = getPoiLngLat(toNode);
+  let duration = "约--分钟";
+  if (fromLngLat && toLngLat) {
+    const distanceKm = calculateDistanceKm(
+      { lng: fromLngLat[0], lat: fromLngLat[1] },
+      { lng: toLngLat[0], lat: toLngLat[1] },
+    );
+    duration = `约${Math.max(3, Math.round(distanceKm * 14))}分钟`;
+  }
+  return {
+    fromId: VIRTUAL_ORIGIN_ID,
+    toId: toNode?.id || "",
+    from: "我的位置",
+    to: toNode?.name || "",
+    method: "步行",
+    duration,
+    arriveAt: toNode?.arrive || "",
+    isVirtualOriginSegment: true,
+  };
+}
+
+function getDisplayTransportSegments(route) {
+  const segments = safeArray(route?.transportSegments);
+  const nodes = safeArray(route?.nodes);
+  const displayNodes = getDisplayRouteNodes(route);
+  if (!shouldUseCurrentLocationOrigin()) return segments;
+  const startOffset = isDefaultStartNode(nodes[0]) ? 1 : 0;
+  const firstTarget = displayNodes[1];
+  if (!firstTarget) return [];
+  return [buildVirtualOriginSegment(route, firstTarget), ...segments.slice(startOffset)];
+}
+
+function getRouteMapNodes(route) {
+  return getDisplayRouteNodes(route)
+    .map((node, index) => ({
+      ...node,
+      index,
+      poiIndex: node.isVirtualOrigin ? null : index + (shouldUseCurrentLocationOrigin() ? 0 : 1),
+      lngLat: getPoiLngLat(node),
+    }))
+    .filter((node) => node.lngLat);
+}
+
+function calculateDistanceKm(pointA, pointB) {
+  const toRadians = (degree) => (degree * Math.PI) / 180;
+  const earthRadiusKm = 6371;
+  const dLat = toRadians(pointB.lat - pointA.lat);
+  const dLng = toRadians(pointB.lng - pointA.lng);
+  const lat1 = toRadians(pointA.lat);
+  const lat2 = toRadians(pointB.lat);
+  const value =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * earthRadiusKm * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
+}
+
+function getBrowserLocation() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error("浏览器不支持定位"));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        resolve({
+          lng: position.coords.longitude,
+          lat: position.coords.latitude,
+          source: "browser",
+        });
+      },
+      reject,
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+    );
+  });
+}
+
+async function getAmapLocation() {
+  if (!AMAP_KEY || !AMAP_SECURITY_JS_CODE) throw new Error("地图配置缺失");
+  const AMap = await loadAmapJsApi();
+  return new Promise((resolve, reject) => {
+    AMap.plugin("AMap.Geolocation", () => {
+      const geolocation = new AMap.Geolocation({
+        enableHighAccuracy: true,
+        timeout: 10000,
+        convert: true,
+      });
+      geolocation.getCurrentPosition((status, result) => {
+        if (status === "complete" && result?.position) {
+          resolve({
+            lng: Number(result.position.lng),
+            lat: Number(result.position.lat),
+            source: "amap",
+          });
+        } else {
+          reject(new Error(result?.message || "高德定位失败"));
+        }
+      });
+    });
+  });
+}
+
+async function locateUser() {
+  setStatePreservingScroll({
+    locationStatus: "loading",
+    locationMessage: "正在获取当前位置...",
+  });
+
+  try {
+    let location = null;
+    try {
+      location = await getAmapLocation();
+    } catch {
+      location = await getBrowserLocation();
+    }
+
+    const distanceKm = calculateDistanceKm(location, HUBIN_IN77_START);
+    const roundedDistance = distanceKm.toFixed(1);
+    if (distanceKm > HUBIN_SERVICE_RADIUS_KM) {
+      setStatePreservingScroll({
+        userLocation: { ...location, distanceKm },
+        startPointMode: "tooFar",
+        locationStatus: "far",
+        locationMessage:
+          `你距离西湖湖滨核心区约 ${roundedDistance}km，当前产品聚焦“现在就出发”的湖滨周边路线。建议使用湖滨 in77 作为出发点。`,
+      });
+      return;
+    }
+
+    if (distanceKm > HUBIN_NEAR_RADIUS_KM) {
+      setStatePreservingScroll({
+        userLocation: { ...location, distanceKm },
+        startPointMode: "in77",
+        locationStatus: "distanceWarning",
+        locationMessage:
+          `你距离湖滨 in77 约 ${roundedDistance}km，距离稍远，建议使用湖滨 in77 作为出发点。`,
+        activeSegmentIndex: 0,
+      });
+      return;
+    }
+
+    setStatePreservingScroll({
+      userLocation: { ...location, distanceKm },
+      startPointMode: "currentLocation",
+      locationStatus: "ready",
+      locationMessage: `已使用你当前位置作为起点，距离湖滨 in77 约 ${roundedDistance}km。`,
+      activeSegmentIndex: 0,
+    });
+  } catch (error) {
+    console.error(error);
+    setStatePreservingScroll({
+      startPointMode: "locationFailed",
+      locationStatus: "failed",
+      locationMessage: "定位失败。你仍然可以使用湖滨 in77 作为起点继续规划。",
+    });
+  }
+}
+
+function useIn77StartPoint() {
+  setStatePreservingScroll({
+    startPointMode: "in77",
+    locationStatus: "fallback",
+    locationMessage: "已使用湖滨 in77 作为起点，可继续生成路线。",
+    activeSegmentIndex: 0,
+  });
+}
+
+function buildAmapNavigationUrl(toPlace, fromPlace) {
+  const toLngLat = getPoiLngLat(toPlace);
+  if (!toLngLat) return "";
+
+  const params = new URLSearchParams({
+    to: `${toLngLat[0]},${toLngLat[1]},${toPlace?.name || "目的地"}`,
+    mode: "walk",
+    policy: "1",
+    src: "route-agent",
+    coordinate: "gaode",
+    callnative: "1",
+  });
+
+  const fromLngLat = getPoiLngLat(fromPlace);
+  if (fromLngLat) {
+    params.set("from", `${fromLngLat[0]},${fromLngLat[1]},${fromPlace?.name || "当前位置"}`);
+  }
+
+  return `https://uri.amap.com/navigation?${params.toString()}`;
+}
+
+function openAmapNavigation(toPlace, fromPlace) {
+  const url = buildAmapNavigationUrl(toPlace, fromPlace);
+  if (!url) {
+    showToast("这个地点缺少坐标，暂时无法打开导航");
+    return;
+  }
+  window.open(url, "_blank", "noopener");
+}
+
+function navigateCurrentSegment() {
+  if (!state.route) return;
+  const { current, next } = getNextAction(state.route);
+  openAmapNavigation(next, current);
+}
+
+function navigateToPlace(placeId) {
+  if (!state.route) return;
+  const nodes = getDisplayRouteNodes(state.route);
+  const targetIndex = nodes.findIndex((node) => node.id === placeId);
+  const target = nodes[targetIndex];
+  const previous = targetIndex > 0 ? nodes[targetIndex - 1] : null;
+  if (!target) return;
+  openAmapNavigation(target, previous);
+}
+
+function advanceSegment() {
+  const nodes = getDisplayRouteNodes(state.route);
+  if (nodes.length < 2) return;
+  const nextIndex = Math.min(state.activeSegmentIndex + 1, nodes.length - 2);
+  if (nextIndex === state.activeSegmentIndex) {
+    showToast("已经是最后一段路线了");
+    return;
+  }
+  setStatePreservingScroll({
+    activeSegmentIndex: nextIndex,
+    selectedNodeId: nodes[nextIndex]?.id || state.selectedNodeId,
+  });
+}
+
+function previousSegment() {
+  const nodes = getDisplayRouteNodes(state.route);
+  if (nodes.length < 2) return;
+  const previousIndex = Math.max(state.activeSegmentIndex - 1, 0);
+  if (previousIndex === state.activeSegmentIndex) {
+    showToast("已经是第一段路线了");
+    return;
+  }
+  setStatePreservingScroll({
+    activeSegmentIndex: previousIndex,
+    selectedNodeId: nodes[previousIndex]?.id || state.selectedNodeId,
+  });
+}
+
+function setMapStatus(status, message = "") {
+  if (state.mapStatus === status && state.mapMessage === message) return;
+  setStatePreservingScroll({ mapStatus: status, mapMessage: message });
+}
+
+function loadAmapJsApi() {
+  if (window.AMap) return Promise.resolve(window.AMap);
+  if (amapRuntime.loadPromise) return amapRuntime.loadPromise;
+
+  window._AMapSecurityConfig = {
+    securityJsCode: AMAP_SECURITY_JS_CODE,
+  };
+
+  amapRuntime.loadPromise = new Promise((resolve, reject) => {
+    const existing = document.getElementById(AMAP_SCRIPT_ID);
+    if (existing) {
+      existing.addEventListener("load", () => resolve(window.AMap), { once: true });
+      existing.addEventListener("error", reject, { once: true });
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.id = AMAP_SCRIPT_ID;
+    script.async = true;
+    script.src = `https://webapi.amap.com/maps?v=2.0&key=${encodeURIComponent(AMAP_KEY)}`;
+    script.onload = () => (window.AMap ? resolve(window.AMap) : reject(new Error("AMap missing")));
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+
+  return amapRuntime.loadPromise;
+}
+
+function drawAmapRoute(AMap, route, container) {
+  const mapNodes = getRouteMapNodes(route);
+  if (!mapNodes.length) {
+    setMapStatus("error", "当前路线缺少可用 POI 经纬度，路线文字仍可查看");
+    return;
+  }
+
+  amapRuntime.container = container;
+  amapRuntime.map = new AMap.Map(container, {
+    zoom: 15,
+    center: mapNodes[0].lngLat,
+    viewMode: "2D",
+  });
+
+  amapRuntime.markers = mapNodes.map((node) => {
+    const marker = new AMap.Marker({
+      position: node.lngLat,
+      title: node.name || "",
+      label: {
+        content: node.isVirtualOrigin ? "起" : String(node.poiIndex || node.index + 1),
+        direction: "top",
+      },
+    });
+    marker.on("click", () => setStatePreservingScroll({ selectedNodeId: node.id }));
+    return marker;
+  });
+
+  amapRuntime.map.add(amapRuntime.markers);
+
+  if (mapNodes.length > 1) {
+    amapRuntime.polyline = new AMap.Polyline({
+      path: mapNodes.map((node) => node.lngLat),
+      strokeColor: "#238b72",
+      strokeOpacity: 0.9,
+      strokeWeight: 6,
+      strokeStyle: "solid",
+      lineJoin: "round",
+      lineCap: "round",
+    });
+    amapRuntime.map.add(amapRuntime.polyline);
+    amapRuntime.map.setFitView([...amapRuntime.markers, amapRuntime.polyline], false, [54, 34, 54, 34]);
+  } else {
+    amapRuntime.map.setFitView(amapRuntime.markers, false, [54, 34, 54, 34]);
+  }
+
+  setMapStatus("ready", "");
+}
+
+async function hydrateAmapRoute(route) {
+  const container = document.getElementById(AMAP_MAP_CONTAINER_ID);
+  if (!container || state.activeTab !== "map") return;
+
+  if (!AMAP_KEY || !AMAP_SECURITY_JS_CODE) {
+    setMapStatus("error", "地图配置缺失");
+    return;
+  }
+
+  try {
+    if (state.mapStatus !== "ready") setMapStatus("loading", "地图加载中...");
+    const AMap = await loadAmapJsApi();
+    const latestContainer = document.getElementById(AMAP_MAP_CONTAINER_ID);
+    if (!latestContainer || state.activeTab !== "map") return;
+    drawAmapRoute(AMap, route, latestContainer);
+  } catch (error) {
+    console.error(error);
+    setMapStatus("error", "地图加载失败，路线文字仍可查看");
+  }
+}
+
+function syncMapAfterRender() {
+  if (state.view !== "result" || state.activeTab !== "map" || !state.route) return;
+  window.requestAnimationFrame(() => hydrateAmapRoute(state.route));
+}
+
+function formatConstraintSummary(constraints) {
+  if (hasValue(constraints?.summary)) return String(constraints.summary);
+  const chipValues = safeArray(constraints?.chips)
+    .map((chip) => chip?.value)
+    .filter(hasValue);
+  if (chipValues.length) return chipValues.join("｜");
+  return mockRouteData.constraints.summary;
+}
+
+function getConstraintSummary() {
+  return state.constraintSummary || formatConstraintSummary(state.constraints);
 }
 
 function routeToConfig(route) {
@@ -562,7 +1166,6 @@ function routeToConfig(route) {
     walkingKm: route.walkingKm,
     waitRisk: route.waitRisk,
     transportSummary: route.transportSummary,
-    order: route.nodes.map((node) => node.id),
     placeIds: route.nodes.map((node) => node.id),
     timeline: route.nodes.map((node) => ({ placeId: node.id, arrive: node.arrive, leave: node.leave })),
     transportSegments: route.transportSegments.map((segment) => ({
@@ -598,11 +1201,12 @@ function recalculateAfterManualChange(route, explanation) {
 }
 
 function getNextAction(route) {
-  const index = Math.max(0, route.nodes.findIndex((node) => node.id === state.selectedNodeId));
-  const safeIndex = index >= route.nodes.length - 1 ? 0 : index;
-  const current = route.nodes[safeIndex];
-  const next = route.nodes[safeIndex + 1] || route.nodes[1] || route.nodes[0];
-  const segment = route.transportSegments[safeIndex] || route.transportSegments[0];
+  const nodes = getDisplayRouteNodes(route);
+  const segments = getDisplayTransportSegments(route);
+  const safeIndex = Math.min(Math.max(0, state.activeSegmentIndex || 0), Math.max(0, nodes.length - 2));
+  const current = nodes[safeIndex] || {};
+  const next = nodes[safeIndex + 1] || nodes[1] || nodes[0] || {};
+  const segment = segments[safeIndex] || segments[0] || { method: "交通方式待确认", duration: "", from: "", to: "" };
   return { current, next, segment };
 }
 
@@ -617,6 +1221,42 @@ function keptNodes(previousRoute, nextRoute) {
 function setState(patch) {
   state = { ...state, ...patch };
   render();
+}
+
+function rememberScrollPosition() {
+  const scroller = document.scrollingElement || document.documentElement;
+  const targets = [".phone-shell", ".task-screen", ".bottom-drawer"];
+  return {
+    left: window.scrollX || scroller.scrollLeft || 0,
+    top: window.scrollY || scroller.scrollTop || 0,
+    targets: targets.map((selector) => {
+      const element = document.querySelector(selector);
+      return {
+        selector,
+        left: element?.scrollLeft || 0,
+        top: element?.scrollTop || 0,
+      };
+    }),
+  };
+}
+
+function restoreScrollPosition(position) {
+  window.requestAnimationFrame(() => {
+    window.scrollTo(position.left, position.top);
+    safeArray(position.targets).forEach((target) => {
+      const element = document.querySelector(target.selector);
+      if (element) {
+        element.scrollLeft = target.left;
+        element.scrollTop = target.top;
+      }
+    });
+  });
+}
+
+function setStatePreservingScroll(patch) {
+  const scrollPosition = rememberScrollPosition();
+  setState(patch);
+  restoreScrollPosition(scrollPosition);
 }
 
 function escapeHtml(value) {
@@ -639,14 +1279,27 @@ function showToast(message) {
 }
 
 function startGeneration() {
+  if (state.locationStatus === "far" && state.startPointMode !== "in77") {
+    setStatePreservingScroll({
+      locationMessage:
+        "你距离西湖湖滨核心区较远，当前产品聚焦“现在就出发”的湖滨周边路线。请先使用湖滨 in77 作为出发点。",
+    });
+    return;
+  }
+
+  const requestText = state.inputText;
+  const previousRoute = state.route ? clone(state.route) : null;
   setState({
     view: "loading",
     loadingStep: 0,
     diff: null,
     previousRoute: null,
     activeAdjustment: null,
+    activeSegmentIndex: 0,
     activeTab: "route",
     drawerOpen: false,
+    errorMessage: "",
+    lastRequestText: requestText,
   });
 
   [1, 2, 3].forEach((step, index) => {
@@ -654,19 +1307,30 @@ function startGeneration() {
       if (step < 3) {
         setState({ loadingStep: step });
       } else {
-        const route = await generateRouteData();
-        if (!route) {
-          showToast("路线生成暂时不可用");
-          setState({ view: "input", loadingStep: 0 });
-          return;
+        try {
+          const result = await generateRouteData();
+          const route = result?.route;
+          if (!route) throw new Error("路线生成失败了，请稍后重试。");
+          setState({
+            view: "result",
+            loadingStep: 3,
+            previousRoute,
+            route,
+            diff: result.diff || null,
+            selectedNodeId: route.nodes[0]?.id,
+            activeSegmentIndex: 0,
+            drawerOpen: Boolean(result.diff),
+            errorMessage: "",
+            hint: route.hint || "",
+          });
+        } catch (error) {
+          console.error(error);
+          setState({
+            view: "input",
+            loadingStep: 0,
+            errorMessage: error?.message || "路线生成失败了，请稍后重试。",
+          });
         }
-        setState({
-          view: "result",
-          loadingStep: 3,
-          route,
-          selectedNodeId: route.nodes[0].id,
-          hint: "",
-        });
       }
     }, 520 + index * 620);
   });
@@ -675,35 +1339,83 @@ function startGeneration() {
 async function applyAdjustment(type, targetNodeId) {
   if (!state.route) return;
   const previousRoute = clone(state.route);
-  const result = await adjustRouteData(type, state.route, targetNodeId);
-  if (!result) return;
+  setState({ naturalAdjustLoading: true, errorMessage: "" });
+  try {
+    const result = await adjustRouteData(type, state.route, targetNodeId);
+    if (!result) throw new Error("路线调整失败了，请稍后重试。");
+    setState({
+      previousRoute,
+      route: result.route,
+      diff: result.diff,
+      selectedNodeId: result.route.nodes[0]?.id,
+      activeSegmentIndex: 0,
+      activeAdjustment: type,
+      drawerOpen: true,
+      naturalAdjustLoading: false,
+      hint: result.route.hint || "",
+    });
+  } catch (error) {
+    console.error(error);
+    setState({ naturalAdjustLoading: false, errorMessage: error?.message || "路线调整失败了，请稍后重试。" });
+    showToast("路线调整失败了，请稍后重试。");
+  }
+}
 
-  setState({
-    previousRoute,
-    route: result.route,
-    diff: result.diff,
-    selectedNodeId: result.route.nodes[0]?.id,
-    activeAdjustment: type,
-    drawerOpen: true,
-    hint: result.route.hint || "",
-  });
+async function submitNaturalAdjustment() {
+  const message = state.naturalAdjustText.trim();
+  if (!message) {
+    showToast("请先输入想怎么调整");
+    return;
+  }
+  const previousRoute = state.route ? clone(state.route) : null;
+  setState({ naturalAdjustLoading: true, errorMessage: "" });
+  try {
+    const result = await chatRouteFromApi(message, state.route);
+    setState({
+      previousRoute,
+      route: result.route,
+      diff: result.diff,
+      selectedNodeId: result.route.nodes[0]?.id,
+      activeSegmentIndex: 0,
+      activeAdjustment: null,
+      drawerOpen: true,
+      naturalAdjustText: "",
+      naturalAdjustLoading: false,
+      view: "result",
+      hint: result.route.hint || "",
+    });
+  } catch (error) {
+    console.error(error);
+    setState({ naturalAdjustLoading: false, errorMessage: error?.message || "路线调整失败了，请稍后重试。" });
+    showToast("路线调整失败了，请稍后重试。");
+  }
 }
 
 async function applyNodeAction(action, targetNodeId) {
   if (!state.route) return;
   const previousRoute = clone(state.route);
-  const result = await adjustRouteActionFromApi(action, state.route, targetNodeId);
-  if (!result) return;
-
-  setState({
-    previousRoute,
-    route: result.route,
-    diff: result.diff,
-    selectedNodeId: action === "delete" ? result.route.nodes[0]?.id : targetNodeId,
-    activeAdjustment: null,
-    drawerOpen: true,
-    hint: result.route.hint || "",
-  });
+  const isOrderMove = action === "moveUp" || action === "moveDown";
+  setState({ naturalAdjustLoading: true, errorMessage: "" });
+  try {
+    const result = await adjustRouteActionFromApi(action, state.route, targetNodeId);
+    if (!result) throw new Error("路线调整失败了，请稍后重试。");
+    setState({
+      previousRoute: isOrderMove ? null : previousRoute,
+      route: result.route,
+      diff: isOrderMove ? null : result.diff,
+      selectedNodeId: action === "delete" ? result.route.nodes[0]?.id : targetNodeId,
+      activeSegmentIndex: 0,
+      activeAdjustment: null,
+      drawerOpen: isOrderMove ? false : true,
+      naturalAdjustLoading: false,
+      hint: result.route.hint || "",
+    });
+    if (isOrderMove) showToast("顺序已更新");
+  } catch (error) {
+    console.error(error);
+    setState({ naturalAdjustLoading: false, errorMessage: error?.message || "路线调整失败了，请稍后重试。" });
+    showToast("路线调整失败了，请稍后重试。");
+  }
 }
 
 function moveNode(id, direction) {
@@ -738,21 +1450,15 @@ function moveNode(id, direction) {
 
   const recalculated = recalculateAfterManualChange(nextRoute, "已按你的顺序重算路线。");
   setState({
-    previousRoute,
+    previousRoute: null,
     route: recalculated,
     selectedNodeId: id,
-    drawerOpen: true,
+    activeSegmentIndex: 0,
+    drawerOpen: false,
     hint: recalculated.hint || "",
-    diff: {
-      title: "顺序已调整",
-      action: "已重新计算总时长、步行距离和编号。",
-      rows: [
-        { label: "路线顺序", value: recalculated.nodes.map((item) => item.name).join(" → ") },
-        { label: "总时长", value: `${formatDuration(previousRoute.durationMinutes)} → ${formatDuration(recalculated.durationMinutes)}` },
-        { label: "步行距离", value: `${previousRoute.walkingKm}km → ${recalculated.walkingKm}km` },
-      ],
-    },
+    diff: null,
   });
+  showToast("顺序已更新");
 }
 
 function deleteNode(id) {
@@ -788,6 +1494,7 @@ function deleteNode(id) {
     previousRoute,
     route: recalculated,
     selectedNodeId: recalculated.nodes[0]?.id,
+    activeSegmentIndex: 0,
     drawerOpen: true,
     hint: recalculated.hint || "",
     diff: {
@@ -830,10 +1537,62 @@ function restoreRoute() {
     diff: null,
     activeAdjustment: null,
     selectedNodeId: restored.nodes[0]?.id,
+    activeSegmentIndex: 0,
     drawerOpen: false,
     hint: "",
   });
   showToast("已恢复原方案");
+}
+
+function restoreLastRoute() {
+  const cached = readLastRouteCache();
+  if (!cached?.routeData) {
+    setState({ restoreCandidate: null });
+    showToast("上次路线已过期，请重新规划");
+    return;
+  }
+
+  const startLocation = cached.startLocation || {};
+  if (cached.sessionId) state.sessionId = cached.sessionId;
+  state.startPointMode = startLocation.startPointMode || state.startPointMode;
+  state.userLocation = startLocation.userLocation || state.userLocation;
+  state.locationStatus = startLocation.locationStatus || state.locationStatus;
+  state.locationMessage = startLocation.locationMessage || state.locationMessage;
+
+  try {
+    const applied = applyRouteData(cached.routeData);
+    const route = applied.route;
+    setState({
+      view: "result",
+      route,
+      previousRoute: null,
+      diff: applied.diff || null,
+      selectedNodeId: route.nodes[0]?.id,
+      activeSegmentIndex: 0,
+      activeTab: "route",
+      drawerOpen: false,
+      restoreCandidate: null,
+      lastRouteData: cached.routeData,
+      sessionId: cached.sessionId || state.sessionId,
+      startPointMode: state.startPointMode,
+      userLocation: state.userLocation,
+      locationStatus: state.locationStatus,
+      locationMessage: state.locationMessage,
+      errorMessage: "",
+      hint: route.hint || "",
+    });
+    showToast("已恢复上次路线");
+  } catch (error) {
+    clearLastRouteCache();
+    console.error(error);
+    setState({ restoreCandidate: null });
+    showToast("上次路线恢复失败，请重新规划");
+  }
+}
+
+function clearRestorePrompt() {
+  clearLastRouteCache();
+  setState({ restoreCandidate: null });
 }
 
 function render() {
@@ -845,9 +1604,118 @@ function render() {
     app.innerHTML = renderInput();
   }
   bindEvents();
+  syncMapAfterRender();
 }
 
 function renderInput() {
+  const exampleChips = [
+    { label: "少排队半日线", value: mockRouteData.input.examples[0] },
+    { label: "带老人小孩少走路", value: mockRouteData.input.examples[1] },
+    {
+      label: "预算100以内",
+      value: "我在湖滨银泰，现在出发，想逛西湖和吃晚饭，预算人均100以内，尽量少排队。",
+    },
+    { label: "想拍照但不想太网红", value: mockRouteData.input.examples[2] },
+  ];
+
+  return `
+    <section class="screen input-screen">
+      <div class="hero">
+        <div class="kicker">杭州西湖 · 现在出发</div>
+        <h1>一句话，生成现在能走的路线</h1>
+        <p>输入你现在的位置、时间、预算和想法，我会自动识别约束并给你一条可执行路线。</p>
+      </div>
+      ${renderRestorePrompt()}
+      <section class="agent-input-panel">
+        <div class="agent-input-head">
+          <span>告诉我你想怎么走</span>
+          <button class="mic ${state.micActive ? "active" : ""}" data-action="toggleMic" aria-label="语音输入">麦</button>
+        </div>
+        <textarea class="agent-textarea" data-field="intent">${escapeHtml(state.inputText)}</textarea>
+        <div class="input-hint">可输入一句话，语音输入下一版接入。</div>
+        <div class="mic-state">${state.micActive ? "语音输入演示中，当前请以文字输入为准" : ""}</div>
+        <div class="auto-note">系统会从你的自然语言中自动识别时间、预算、同行人和偏好。</div>
+        ${renderLocationEntry()}
+        <div class="example-block">
+          <div class="section-label">试试这些需求</div>
+          <div class="examples example-chips">
+            ${exampleChips
+              .map(
+                (example) =>
+                  `<button class="example" data-action="useExample" data-value="${escapeHtml(example.value)}">${escapeHtml(example.label)}</button>`,
+              )
+              .join("")}
+          </div>
+        </div>
+        ${renderErrorPanel()}
+        <button class="primary input-primary" data-action="generate">生成现在能走的路线</button>
+      </section>
+    </section>
+    ${renderToast()}
+  `;
+}
+
+function renderRestorePrompt() {
+  if (!state.restoreCandidate) return "";
+  return `
+    <section class="restore-route-card">
+      <div>
+        <strong>发现你刚刚生成过一条路线，要继续查看吗？</strong>
+      </div>
+      <div class="restore-route-actions">
+        <button class="secondary" data-action="restoreLastRoute">继续上次路线</button>
+        <button class="ghost-btn" data-action="clearRestorePrompt">重新规划</button>
+      </div>
+    </section>
+  `;
+}
+
+function renderLocationEntry() {
+  const showFallback =
+    state.locationStatus === "far" ||
+    state.locationStatus === "failed" ||
+    state.locationStatus === "fallback" ||
+    state.startPointMode === "in77";
+  const message = state.locationMessage || "可使用当前位置判断是否适合湖滨周边“现在就出发”路线。";
+  return `
+    <section class="location-entry ${state.locationStatus}">
+      <div>
+        <strong>出发点</strong>
+        <p>${displayText(message, "")}</p>
+      </div>
+      <div class="location-actions">
+        <button class="secondary" data-action="useCurrentLocation" ${state.locationStatus === "loading" ? "disabled" : ""}>
+          ${state.locationStatus === "loading" ? "定位中" : "使用当前位置"}
+        </button>
+        ${showFallback ? `<button class="secondary" data-action="useIn77Start">使用湖滨 in77 作为起点</button>` : ""}
+      </div>
+    </section>
+  `;
+}
+
+function renderLocationEntry() {
+  const contentByStatus = {
+    ready: { text: "📍 已使用当前位置", action: "重新定位", actionType: "useCurrentLocation" },
+    loading: { text: "📍 正在获取当前位置", action: "定位中", actionType: "useCurrentLocation" },
+    failed: { text: "📍 定位失败，已推荐湖滨 in77", action: "使用当前位置", actionType: "useCurrentLocation" },
+    distanceWarning: { text: "📍 距离稍远，建议使用湖滨 in77", action: "使用湖滨 in77", actionType: "useIn77Start" },
+    far: { text: "📍 距离较远，建议使用湖滨 in77", action: "使用湖滨 in77", actionType: "useIn77Start" },
+    fallback: { text: "📍 出发点：湖滨 in77", action: "使用当前位置", actionType: "useCurrentLocation" },
+  };
+  const content = contentByStatus[state.locationStatus] || {
+    text: "📍 出发点：湖滨 in77",
+    action: "使用当前位置",
+    actionType: "useCurrentLocation",
+  };
+  return `
+    <section class="location-entry ${state.locationStatus}">
+      <span>${displayText(content.text, "📍 出发点：湖滨 in77")}</span>
+      <button data-action="${content.actionType}" ${state.locationStatus === "loading" ? "disabled" : ""}>${displayText(content.action, "使用当前位置")}</button>
+    </section>
+  `;
+}
+
+function renderLegacyInput() {
   return `
     <section class="screen">
       <div class="hero">
@@ -875,6 +1743,7 @@ function renderInput() {
             .join("")}
         </div>
         <button class="primary" data-action="generate">生成可执行路线</button>
+        ${renderErrorPanel()}
       </section>
     </section>
     ${renderToast()}
@@ -887,7 +1756,8 @@ function renderLoading() {
     <section class="loading-screen">
       <div class="loading-card panel">
         <div class="pulse-route"><span class="pulse-dot one"></span><span class="pulse-dot two"></span></div>
-        <div class="loading-title">正在把需求串成路线</div>
+        <div class="loading-title">正在规划一条现在就能出发的路线...</div>
+        <p class="loading-subtitle">路线服务如果刚启动，可能需要十几秒，请稍等。</p>
         <div class="steps">
           ${steps
             .map((step, index) => {
@@ -905,14 +1775,13 @@ function renderResult() {
   const route = state.route;
   return `
     <section class="screen result task-screen tab-${state.activeTab}">
-      <div class="route-brief">${mockRouteData.constraints.summary}</div>
-      ${renderSummary(route)}
+      <div class="route-brief">${displayText(getConstraintSummary(), "当前约束待确认")}</div>
       ${renderNextAction(route)}
+      ${renderSummary(route)}
       ${renderTabs()}
       <section class="tab-body">
         ${state.activeTab === "route" ? renderRouteTab(route) : ""}
         ${state.activeTab === "map" ? renderMap(route, "large") : ""}
-        ${state.activeTab === "places" ? renderPoiCards(route) : ""}
       </section>
       ${renderBottomBar(route)}
       ${renderDrawer()}
@@ -925,15 +1794,15 @@ function renderSummary(route) {
   return `
     <section class="card summary-card task-summary">
       <div>
-        <span class="summary-label">${route.label}</span>
-        <h2>${route.name}</h2>
-        <p>${route.explanation}</p>
+        <span class="summary-label">${displayText(route.label, "当前路线")}</span>
+        <h2>${displayText(route.name, "路线名称待确认")}</h2>
+        <p>${displayText(route.explanation, "路线理由待确认")}</p>
       </div>
       <div class="task-metrics">
         <div><strong>${formatDuration(route.durationMinutes)}</strong><span>总时长</span></div>
-        <div><strong>${route.budgetPerPerson}元</strong><span>人均</span></div>
-        <div><strong>${route.walkingKm}km</strong><span>步行</span></div>
-        <div><strong>${route.waitRisk}</strong><span>等待</span></div>
+        <div><strong>${displayBudget(route.budgetPerPerson)}</strong><span>人均</span></div>
+        <div><strong>${displayDistance(route.walkingKm)}</strong><span>步行</span></div>
+        <div><strong>${displayWaitRisk(route.waitRisk)}</strong><span>等待</span></div>
       </div>
     </section>
   `;
@@ -941,20 +1810,118 @@ function renderSummary(route) {
 
 function renderNextAction(route) {
   const { current, next, segment } = getNextAction(route);
+  const currentName = current.shortName || current.name || "当前位置";
+  const nextName = next.name || "下一站待确认";
+  const method = segment.method || "交通方式待确认";
+  const duration = segment.duration || "";
+  const arrive = next.arrive || "到达时间待确认";
   return `
     <section class="card next-card">
-      <span>下一步行动</span>
-      <h3>下一站：${next.name}</h3>
-      <p>从${current.shortName || current.name}${segment.method}${segment.duration}，预计${next.arrive}到达。</p>
+      <div class="next-card-head">
+        <span>下一步行动</span>
+        <b>现在执行</b>
+      </div>
+      <div class="next-instruction">
+        <small>从 ${displayText(currentName, "当前位置")} 出发</small>
+        <h3>去 ${displayText(nextName, "下一站待确认")}</h3>
+      </div>
+      <div class="next-route-line">
+        <span>${displayText(method, "交通方式待确认")}${displayText(duration, "")}</span>
+        <span>${displayText(arrive, "到达时间待确认")} 到达</span>
+      </div>
+    </section>
+  `;
+}
+
+function renderNextAction(route) {
+  const { current, next, segment } = getNextAction(route);
+  const currentName = current.shortName || current.name || "当前位置";
+  const nextName = next.name || "下一站待确认";
+  const method = segment.method || "交通方式待确认";
+  const duration = segment.duration || "";
+  const arrive = next.arrive || "到达时间待确认";
+  return `
+    <section class="card next-card">
+      <div class="next-card-head">
+        <span>下一步行动</span>
+        <b>现在执行</b>
+      </div>
+      <div class="next-instruction">
+        <small>从 ${displayText(currentName, "当前位置")} 出发</small>
+        <h3>去 ${displayText(nextName, "下一站待确认")}</h3>
+      </div>
+      <div class="next-route-line">
+        <span>${displayText(method, "交通方式待确认")}${displayText(duration, "")}</span>
+        <span>${displayText(arrive, "到达时间待确认")} 到达</span>
+      </div>
+      <div class="next-card-actions">
+        <button data-action="followRoute">出发</button>
+        <button data-action="nextSegment">下一步</button>
+      </div>
+    </section>
+  `;
+}
+
+function renderNextAction(route) {
+  const { current, next, segment } = getNextAction(route);
+  const currentName = current.shortName || current.name || "当前位置";
+  const nextName = next.name || "下一站待确认";
+  const method = segment.method || "交通方式待确认";
+  const duration = segment.duration || "";
+  const arrive = next.arrive || "到达时间待确认";
+  return `
+    <section class="card next-card">
+      <div class="next-card-head">
+        <span>下一步行动</span>
+        <b>现在执行</b>
+      </div>
+      <div class="next-instruction">
+        <small>从 ${displayText(currentName, "当前位置")} 出发</small>
+        <h3>去 ${displayText(nextName, "下一站待确认")}</h3>
+      </div>
+      <div class="next-route-line">
+        <span>${displayText(method, "交通方式待确认")}${displayText(duration, "")}</span>
+        <span>${displayText(arrive, "到达时间待确认")} 到达</span>
+      </div>
+      <div class="next-card-actions">
+        <button data-action="previousSegment">上一步</button>
+        <button data-action="nextSegment">下一步</button>
+      </div>
+    </section>
+  `;
+}
+
+function renderNextAction(route) {
+  const nodes = getDisplayRouteNodes(route);
+  const totalSegments = Math.max(0, nodes.length - 1);
+  const currentSegment = totalSegments ? Math.min(state.activeSegmentIndex || 0, totalSegments - 1) + 1 : 0;
+  const { current, next, segment } = getNextAction(route);
+  const currentName = current.shortName || current.name || "当前位置";
+  const nextName = next.name || "下一站待确认";
+  const duration = segment.duration || "";
+  const arrive = next.arrive || "到达时间待确认";
+  const canGoPrevious = currentSegment > 1;
+  const canGoNext = currentSegment > 0 && currentSegment < totalSegments;
+  return `
+    <section class="card next-card">
+      <div class="next-card-head">
+        <span>下一步行动</span>
+        <div class="segment-switcher" aria-label="切换路线分段">
+          <span>当前段 ${currentSegment || 0}/${totalSegments || 0}</span>
+          <button data-action="previousSegment" ${canGoPrevious ? "" : "disabled"} aria-label="上一段">‹</button>
+          <button data-action="nextSegment" ${canGoNext ? "" : "disabled"} aria-label="下一段">›</button>
+        </div>
+      </div>
+      <div class="next-compact-title">${displayText(currentName, "当前位置")} → ${displayText(nextName, "下一站待确认")}</div>
+      <div class="next-compact-meta">步行${displayText(duration, "约 -- 分钟")} · 预计 ${displayText(arrive, "到达时间待确认")} 到达</div>
     </section>
   `;
 }
 
 function renderTabs() {
   const tabs = [
-    ["route", "路线"],
+    ["route", "行程"],
     ["map", "地图"],
-    ["places", "地点"],
   ];
   return `
     <nav class="route-tabs" aria-label="路线视图切换">
@@ -968,25 +1935,22 @@ function renderTabs() {
 function renderRouteTab(route) {
   return `
     <div class="hint ${state.hint ? "show" : ""}">${state.hint}</div>
-    <section class="card transport-compact">
-      <button class="transport-toggle" data-action="toggleTransport">
-        <span>完整交通方案</span>
-        <strong>${state.transportOpen ? "收起" : "展开"}</strong>
-      </button>
-      ${state.transportOpen ? renderTransportList(route) : `<p>${route.transportSummary}</p>`}
-    </section>
     ${renderTimeline(route)}
   `;
 }
 
 function renderTransportList(route) {
+  const segments = safeArray(route.transportSegments);
+  if (!segments.length) {
+    return `<p class="empty-note">交通分段待确认，路线节点仍可按顺序查看。</p>`;
+  }
   return `
     <div class="segments">
-      ${route.transportSegments
+      ${segments
         .map((segment) => `
           <div class="segment">
             <span class="walk-icon">步</span>
-            <div><strong>${segment.from} → ${segment.to}</strong><span>${segment.method}${segment.duration}</span></div>
+            <div><strong>${displayText(segment.from, "出发地待确认")} → ${displayText(segment.to, "目的地待确认")}</strong><span>${displayText(segment.method, "交通方式待确认")}${displayText(segment.duration, "")}</span></div>
           </div>
         `)
         .join("")}
@@ -995,48 +1959,70 @@ function renderTransportList(route) {
 }
 
 function renderMap(route, mode) {
-  const points = route.nodes.map((node) => `${node.map.x},${node.map.y}`).join(" ");
-  const activeNode = route.nodes.find((node) => node.id === state.selectedNodeId) || route.nodes[0];
+  const nodes = getDisplayRouteNodes(route);
+  const mapNodes = getRouteMapNodes(route);
+  const activeNode = nodes.find((node) => node.id === state.selectedNodeId) || nodes[0] || {};
+  const poiCount = nodes.filter((node) => !node.isVirtualOrigin).length;
+  const mapSummary = shouldUseCurrentLocationOrigin() ? `当前位置 + ${poiCount}站` : `${poiCount}站`;
+  const showMapState = state.mapStatus === "loading" || state.mapStatus === "error";
   return `
     <section class="card map-card ${mode === "preview" ? "map-preview-card" : "map-large-card"}">
-      ${mode === "large" ? `<div class="section-head"><h3>路线地图</h3><span class="summary-label">${route.nodes.length}站</span></div>` : ""}
+      ${mode === "large" ? `<div class="section-head"><h3>路线地图</h3><span class="summary-label">${mapSummary}</span></div>` : ""}
+      <div class="map amap-shell ${mode === "preview" ? "map-preview" : "map-large"}">
+        <div id="${AMAP_MAP_CONTAINER_ID}" class="amap-container" aria-label="高德路线地图"></div>
+        ${showMapState ? `<div class="map-state ${state.mapStatus === "error" ? "error" : ""}">${displayText(state.mapMessage, state.mapStatus === "error" ? "地图加载失败，路线文字仍可查看" : "地图加载中...")}</div>` : ""}
+        ${mode === "large" ? `<div class="map-active-place"><strong>${displayText(activeNode.name, "地点待确认")}</strong><span>${activeNode.isVirtualOrigin ? "实时定位起点" : `${displayText(typeText[activeNode.type], "类型待确认")} | ${displayText(activeNode.arrive, "到达时间待确认")} 到达`}</span></div>` : ""}
+      </div>
+      ${mode === "large" ? `<div class="map-caption"><span>按当前路线顺序展示 POI Marker 和路线连线</span><span>${displayText(nodes.find((node) => node.id === state.selectedNodeId)?.name, "")}</span></div>` : ""}
+    </section>
+  `;
+  return `
+    <section class="card map-card ${mode === "preview" ? "map-preview-card" : "map-large-card"}">
+      ${mode === "large" ? `<div class="section-head"><h3>路线地图</h3><span class="summary-label">${nodes.length}站</span></div>` : ""}
       <div class="map ${mode === "preview" ? "map-preview" : "map-large"}">
         <span class="lake-label">西湖水域</span>
         <span class="district-label">湖滨商圈</span>
         <svg class="route-line" viewBox="0 0 100 100" preserveAspectRatio="none"><polyline points="${points}"></polyline></svg>
-        ${route.nodes
+        ${nodes
           .map((node, index) => `
             <button class="marker ${node.id === state.selectedNodeId ? "active" : ""}"
-              style="left:${node.map.x}%;top:${node.map.y}%"
+              style="left:${node.map?.x ?? 50}%;top:${node.map?.y ?? 50}%"
               data-action="selectNode"
               data-id="${node.id}"
-              aria-label="${node.name}">${index + 1}</button>
+              aria-label="${displayText(node.name, "地点待确认")}">${index + 1}</button>
           `)
           .join("")}
-        ${mode === "large" ? `<div class="map-active-place"><strong>${activeNode.name}</strong><span>${typeText[activeNode.type]}｜${activeNode.arrive} 到达</span></div>` : ""}
+        ${mode === "large" ? `<div class="map-active-place"><strong>${displayText(activeNode.name, "地点待确认")}</strong><span>${displayText(typeText[activeNode.type], "类型待确认")}｜${displayText(activeNode.arrive, "到达时间待确认")} 到达</span></div>` : ""}
       </div>
-      ${mode === "large" ? `<div class="map-caption"><span>点击编号同步查看节点</span><span>${route.nodes.find((node) => node.id === state.selectedNodeId)?.name || ""}</span></div>` : ""}
+      ${mode === "large" ? `<div class="map-caption"><span>当前为路线节点示意，真实步行路径将在接入高德后展示。</span><span>${displayText(nodes.find((node) => node.id === state.selectedNodeId)?.name, "")}</span></div>` : ""}
     </section>
   `;
 }
 
 function renderTimeline(route) {
+  const nodes = safeArray(route.nodes);
   return `
-    <section class="card">
-      <div class="section-head"><h3>今天怎么走</h3><span class="summary-label">行动指令</span></div>
+    <section class="card itinerary-card">
+      <div class="section-head"><h3>今天怎么走</h3><span class="summary-label">行程中可调整</span></div>
+      <div class="itinerary-transport-note">${renderTransportBrief(route)}</div>
       <div class="timeline compact-timeline">
-        ${route.nodes
+        ${nodes
           .map((node, index) => {
-            const expanded = state.expandedNodes.includes(node.id);
+            const reasonExpanded = state.expandedNodes.includes(node.id);
+            const detailExpanded = state.expandedDetails.includes(node.id);
             return `
-              <article class="timeline-item ${node.id === state.selectedNodeId ? "active" : ""}" data-action="selectNode" data-id="${node.id}">
-                <div class="timebox"><strong>${node.arrive}</strong><span>${node.leave} 离开</span><div class="node-dot">${index + 1}</div></div>
+              <article class="timeline-item ${node.id === state.selectedNodeId ? "active" : ""}">
+                <div class="timebox"><strong>${displayText(node.arrive, "--:--")}</strong><span>${displayText(node.leave, "--:--")} 离开</span><div class="node-dot">${index + 1}</div></div>
                 <div class="timeline-body">
-                  <h4>${node.name}</h4>
-                  <div class="type-line">${typeIcon[node.type]} · ${typeText[node.type]}</div>
-                  ${node.next ? `<div class="next-step">下一段：${node.next}</div>` : `<div class="next-step">路线结束，湖滨商圈方便离开。</div>`}
-                  <button class="detail-toggle" data-action="toggleNodeDetail" data-id="${node.id}">${expanded ? "收起说明" : "查看理由"}</button>
-                  ${expanded ? `<p>${node.reason}</p>${node.note ? `<div class="notice">${node.note}</div>` : ""}` : ""}
+                  <h4>${displayText(node.name, "地点待确认")}</h4>
+                  <div class="type-line">${displayText(typeIcon[node.type], "点")} · ${displayText(typeText[node.type], "类型待确认")}</div>
+                  ${node.next ? `<div class="next-step">下一段：${displayText(node.next, "交通信息待确认")}</div>` : `<div class="next-step">路线结束，湖滨商圈方便离开。</div>`}
+                  <div class="timeline-tools">
+                    <button class="detail-toggle" data-action="toggleNodeDetail" data-id="${node.id}">${reasonExpanded ? "收起理由" : "查看理由"}</button>
+                    <button class="detail-toggle ghost" data-action="togglePlaceDetail" data-id="${node.id}">${detailExpanded ? "收起详情" : "地点详情"}</button>
+                  </div>
+                  ${reasonExpanded ? `<p>${displayText(node.reason, "推荐理由待确认")}</p>${node.note ? `<div class="notice">${displayText(node.note, "")}</div>` : ""}` : ""}
+                  ${detailExpanded ? renderInlinePoiDetail(node, index, nodes.length) : ""}
                 </div>
               </article>
             `;
@@ -1047,28 +2033,49 @@ function renderTimeline(route) {
   `;
 }
 
+function renderTransportBrief(route) {
+  const durations = safeArray(route.transportSegments)
+    .map((segment) => Number(String(segment.duration || "").match(/\d+/)?.[0]))
+    .filter((duration) => Number.isFinite(duration));
+  const longest = durations.length
+    ? Math.max(...durations)
+    : Number(String(route.transportSummary || "").match(/最长约?(\d+)分钟/)?.[1]);
+  return `交通方式：全程步行优先｜最长单段${Number.isFinite(longest) ? `${longest}分钟` : "待确认"}`;
+}
+
+function renderInlinePoiDetail(node, index, total) {
+  return `
+    <div class="itinerary-place-detail">
+      ${renderPoiVisual(node, index)}
+      <div class="poi-content">
+        <div class="poi-meta"><span class="poi-type">${displayText(typeText[node.type], "类型待确认")}</span><span class="poi-score">评分 ${displayText(node.rating, "暂无评分")}</span></div>
+        <p>${displayText(node.address, "地址待确认")}</p>
+        <div class="mini-grid"><div class="mini"><strong>开放时间</strong>${displayText(node.openHours, "营业时间待确认")}</div><div class="mini"><strong>价格</strong>${displayText(node.price, "价格待确认")}</div></div>
+        <div class="small-tags">${safeArray(node.tags).map((tag) => `<span>${displayText(tag, "")}</span>`).join("")}</div>
+        ${renderPoiActions(node, index, total)}
+      </div>
+    </div>
+  `;
+}
+
 function renderPoiCards(route) {
+  const nodes = safeArray(route.nodes);
   return `
     <section class="card">
       <div class="section-head"><h3>目的地</h3><span class="summary-label">可局部调整</span></div>
       <div class="poi-list">
-        ${route.nodes
+        ${nodes
           .map((node, index) => `
             <article class="poi-card card ${node.id === state.selectedNodeId ? "active" : ""}" data-id="${node.id}">
-              <div class="poi-visual ${node.type}"><span class="poi-index">${index + 1}</span></div>
+              ${renderPoiVisual(node, index)}
               <div class="poi-content">
-                <div class="poi-meta"><span class="poi-type">${typeText[node.type]}</span><span class="poi-score">评分 ${node.rating}</span></div>
-                <h4>${node.name}</h4>
-                <p>${node.address}</p>
-                <div class="mini-grid"><div class="mini"><strong>开放时间</strong>${node.openHours}</div><div class="mini"><strong>价格</strong>${node.price}</div></div>
-                <div class="small-tags">${node.tags.map((tag) => `<span>${tag}</span>`).join("")}</div>
-                <p class="why">为什么推荐：${node.reason}</p>
-                <div class="poi-actions">
-                  <button class="small-btn primary-mini" data-action="replaceNode" data-id="${node.id}">替换</button>
-                  <button class="small-btn" data-action="deleteNode" data-id="${node.id}">删除</button>
-                  <button class="small-btn" data-action="moveNodeUp" data-id="${node.id}">上移</button>
-                  <button class="small-btn" data-action="moveNodeDown" data-id="${node.id}">下移</button>
-                </div>
+                <div class="poi-meta"><span class="poi-type">${displayText(typeText[node.type], "类型待确认")}</span><span class="poi-score">评分 ${displayText(node.rating, "暂无评分")}</span></div>
+                <h4>${displayText(node.name, "地点待确认")}</h4>
+                <p>${displayText(node.address, "地址待确认")}</p>
+                <div class="mini-grid"><div class="mini"><strong>开放时间</strong>${displayText(node.openHours, "营业时间待确认")}</div><div class="mini"><strong>价格</strong>${displayText(node.price, "价格待确认")}</div></div>
+                <div class="small-tags">${safeArray(node.tags).map((tag) => `<span>${displayText(tag, "")}</span>`).join("")}</div>
+                <p class="why">为什么推荐：${displayText(node.reason, "推荐理由待确认")}</p>
+                ${renderPoiActions(node, index, nodes.length)}
               </div>
             </article>
           `)
@@ -1078,12 +2085,74 @@ function renderPoiCards(route) {
   `;
 }
 
+function renderPoiActions(node, index, total) {
+  const isStart = node.type === "start" || index === 0;
+  if (isStart) return "";
+  const secondaryActions = [
+    `<button class="small-btn" data-action="deleteNode" data-id="${node.id}">删掉</button>`,
+    index > 1 ? `<button class="small-btn" data-action="moveNodeUp" data-id="${node.id}">提前</button>` : "",
+    index < total - 1 ? `<button class="small-btn" data-action="moveNodeDown" data-id="${node.id}">往后</button>` : "",
+  ].filter(Boolean);
+  return `
+    <div class="poi-actions">
+      <button class="small-btn primary-mini" data-action="replaceNode" data-id="${node.id}">换一个</button>
+      <div class="poi-secondary-actions">${secondaryActions.join("")}</div>
+    </div>
+  `;
+}
+
+function renderPoiActions(node, index, total) {
+  const isStart = node.type === "start" || index === 0;
+  if (isStart) return "";
+  const secondaryActions = [
+    `<button class="small-btn" data-action="navigateToPlace" data-id="${node.id}">出发</button>`,
+    `<button class="small-btn" data-action="deleteNode" data-id="${node.id}">删除</button>`,
+    index > 1 ? `<button class="small-btn" data-action="moveNodeUp" data-id="${node.id}">提前</button>` : "",
+    index < total - 1 ? `<button class="small-btn" data-action="moveNodeDown" data-id="${node.id}">往后</button>` : "",
+  ].filter(Boolean);
+  return `
+    <div class="poi-actions">
+      <button class="small-btn primary-mini" data-action="replaceNode" data-id="${node.id}">换一个</button>
+      <div class="poi-secondary-actions">${secondaryActions.join("")}</div>
+    </div>
+  `;
+}
+
+function renderPoiVisual(node, index) {
+  const imageUrl = hasValue(node.imageUrl)
+    ? String(node.imageUrl)
+    : fallbackImageByPlaceId[node.id] || fallbackImageByType[node.type] || "";
+  return `
+    <div class="poi-visual ${displayText(node.type, "rest")} ${imageUrl ? "has-image" : ""}">
+      ${imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="${displayText(node.name, "地点图片")}" loading="lazy" decoding="async" onerror="this.closest('.poi-visual')?.classList.add('image-failed'); this.remove();">` : ""}
+      <span class="poi-index">${index + 1}</span>
+    </div>
+  `;
+}
+
 function renderBottomBar(route) {
   const { next, segment } = getNextAction(route);
+  const nextName = next.name || "下一站待确认";
+  const method = segment.method || "交通方式待确认";
+  const duration = segment.duration ? segment.duration.replace("约", "") : "";
   return `
     <div class="bottom-action-bar">
-      <div><span>下一站</span><strong>${next.name}｜${segment.method}${segment.duration.replace("约", "")}</strong></div>
-      <button class="secondary" data-action="openDrawer">调整</button>
+      <div><span>下一站</span><strong>${displayText(nextName, "下一站待确认")}｜${displayText(method, "交通方式待确认")}${displayText(duration, "")}</strong></div>
+      <button class="secondary" data-action="openDrawer">改路线</button>
+      <button class="primary" data-action="followRoute">出发</button>
+    </div>
+  `;
+}
+
+function renderBottomBar(route) {
+  const { next, segment } = getNextAction(route);
+  const nextName = next.name || "下一站待确认";
+  const method = segment.method || "交通方式待确认";
+  const duration = segment.duration ? segment.duration.replace("约", "") : "";
+  return `
+    <div class="bottom-action-bar">
+      <div><span>下一站</span><strong>${displayText(nextName, "下一站待确认")}｜${displayText(method, "交通方式待确认")}${displayText(duration, "")}</strong></div>
+      <button class="secondary" data-action="openDrawer">改路线</button>
       <button class="primary" data-action="followRoute">出发</button>
     </div>
   `;
@@ -1091,32 +2160,43 @@ function renderBottomBar(route) {
 
 function renderDrawer() {
   if (!state.drawerOpen) return "";
+  const hasDiffRows = state.diff && safeArray(state.diff.rows).length;
   return `
     <div class="drawer-backdrop" data-action="closeDrawer"></div>
     <aside class="bottom-drawer" role="dialog" aria-label="调整路线">
       <div class="drawer-handle"></div>
       <div class="section-head">
-        <h3>现场变了，就局部调整</h3>
+        <h3>想怎么改？直接说一句</h3>
         <button class="drawer-close" data-action="closeDrawer">关闭</button>
       </div>
-      <p class="transport-note">只替换、删除或调整相关节点，并告诉你变化在哪里。</p>
+      <p class="transport-note">我会尽量只改相关节点，不重生成整篇攻略。</p>
+      <section class="nl-adjust-box" aria-label="自然语言调整入口">
+        <textarea class="nl-adjust-input" data-field="naturalAdjust" placeholder="例如：我想少排队一点 / 不要咖啡 / 现在只剩2小时">${escapeHtml(state.naturalAdjustText)}</textarea>
+        <button class="primary nl-adjust-submit" data-action="submitNaturalAdjust" ${state.naturalAdjustLoading ? "disabled" : ""}>${state.naturalAdjustLoading ? "发送中" : "发送"}</button>
+      </section>
+      <div class="quick-head">
+        <strong>快捷调整</strong>
+        <span>以下调整已接入当前路线重算</span>
+      </div>
       <div class="quick-grid drawer-grid">
         ${mockRouteData.adjustmentButtons
-          .map((button) => `<button class="quick-btn ${state.activeAdjustment === button.type ? "active" : ""}" data-action="adjust" data-type="${button.type}">${button.label}</button>`)
+          .map((button) => `<button class="quick-btn ${state.activeAdjustment === button.type ? "active" : ""}" data-action="adjust" data-type="${button.type}" ${state.naturalAdjustLoading ? "disabled" : ""}>${button.label}</button>`)
           .join("")}
       </div>
-      ${state.diff ? renderDiffCard(state.diff) : ""}
+      ${hasDiffRows ? renderDiffCard(state.diff) : ""}
     </aside>
   `;
 }
 
 function renderDiffCard(diff) {
+  const rows = safeArray(diff?.rows);
+  if (!rows.length) return "";
   return `
     <section class="diff-card drawer-diff">
-      <h3>${diff.title}</h3>
-      <p class="diff-subtitle">${diff.action}</p>
+      <h3>${displayText(diff.title, "调整结果")}</h3>
+      <p class="diff-subtitle">${displayText(diff.action, "已完成局部调整。")}</p>
       <div class="diff-list">
-        ${diff.rows.map((row) => `<div class="diff-row"><span>${row.label}</span><span>${row.value}</span></div>`).join("")}
+        ${rows.map((row) => `<div class="diff-row"><span>${displayText(row.label, "")}</span><span>${displayText(row.value, "")}</span></div>`).join("")}
       </div>
       <div class="diff-actions">
         <button class="primary" data-action="acceptRoute">采用新方案</button>
@@ -1130,14 +2210,37 @@ function renderToast() {
   return `<div class="toast ${state.toast ? "show" : ""}">${state.toast}</div>`;
 }
 
+function renderErrorPanel() {
+  if (!state.errorMessage) return "";
+  return `
+    <section class="error-panel" role="alert">
+      <strong>路线生成失败了，请稍后重试。</strong>
+      <p>${displayText(state.errorMessage, "暂时连接不上路线服务，请检查网络后重试。")}</p>
+      <button class="secondary" data-action="retryGenerate">重新规划</button>
+    </section>
+  `;
+}
+
 function bindEvents() {
   document.querySelectorAll("[data-action]").forEach((element) => {
     element.addEventListener("click", handleAction);
+  });
+  document.querySelectorAll(".poi-card").forEach((card) => {
+    card.addEventListener("click", (event) => {
+      if (event.target.closest("[data-action]")) return;
+      setStatePreservingScroll({ selectedNodeId: card.dataset.id });
+    });
   });
   const textarea = document.querySelector("[data-field='intent']");
   if (textarea) {
     textarea.addEventListener("input", (event) => {
       state.inputText = event.target.value;
+    });
+  }
+  const naturalAdjustInput = document.querySelector("[data-field='naturalAdjust']");
+  if (naturalAdjustInput) {
+    naturalAdjustInput.addEventListener("input", (event) => {
+      state.naturalAdjustText = event.target.value;
     });
   }
 }
@@ -1149,6 +2252,15 @@ function handleAction(event) {
 
   if (action === "toggleMic") setState({ micActive: !state.micActive });
   if (action === "useExample") setState({ inputText: target.dataset.value || mockRouteData.input.defaultText });
+  if (action === "submitNaturalAdjust") {
+    submitNaturalAdjustment();
+  }
+  if (action === "retryGenerate") {
+    setState({ inputText: state.lastRequestText || state.inputText, errorMessage: "" });
+    startGeneration();
+  }
+  if (action === "restoreLastRoute") restoreLastRoute();
+  if (action === "clearRestorePrompt") clearRestorePrompt();
   if (action === "togglePreference") {
     const value = target.dataset.value;
     const exists = state.selectedPreferences.includes(value);
@@ -1159,29 +2271,39 @@ function handleAction(event) {
     });
   }
   if (action === "generate") startGeneration();
+  if (action === "useCurrentLocation") locateUser();
+  if (action === "useIn77Start") useIn77StartPoint();
   if (action === "switchTab") setState({ activeTab: target.dataset.tab });
   if (action === "toggleTransport") setState({ transportOpen: !state.transportOpen });
   if (action === "toggleNodeDetail") {
     event.stopPropagation();
     const exists = state.expandedNodes.includes(id);
-    setState({
+    setStatePreservingScroll({
       expandedNodes: exists
         ? state.expandedNodes.filter((item) => item !== id)
         : [...state.expandedNodes, id],
     });
   }
+  if (action === "togglePlaceDetail") {
+    event.stopPropagation();
+    const exists = state.expandedDetails.includes(id);
+    setStatePreservingScroll({
+      expandedDetails: exists
+        ? state.expandedDetails.filter((item) => item !== id)
+        : [...state.expandedDetails, id],
+      selectedNodeId: id,
+    });
+  }
   if (action === "selectNode") {
-    setState({ selectedNodeId: id });
-    if (state.activeTab === "places") {
-      window.setTimeout(() => {
-        document.querySelector(`.poi-card[data-id="${id}"]`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      }, 40);
-    }
+    setStatePreservingScroll({ selectedNodeId: id });
   }
   if (action === "openDrawer") setState({ drawerOpen: true });
   if (action === "closeDrawer") setState({ drawerOpen: false });
   if (action === "adjust") applyAdjustment(target.dataset.type, state.selectedNodeId);
-  if (action === "followRoute") showToast("已进入路线执行视图");
+  if (action === "followRoute") navigateCurrentSegment();
+  if (action === "navigateToPlace") navigateToPlace(id);
+  if (action === "previousSegment") previousSegment();
+  if (action === "nextSegment") advanceSegment();
   if (action === "moveNodeUp") moveNode(id, -1);
   if (action === "moveNodeDown") moveNode(id, 1);
   if (action === "deleteNode") deleteNode(id);
@@ -1190,4 +2312,5 @@ function handleAction(event) {
   if (action === "restoreRoute") restoreRoute();
 }
 
+state.restoreCandidate = readLastRouteCache();
 render();
