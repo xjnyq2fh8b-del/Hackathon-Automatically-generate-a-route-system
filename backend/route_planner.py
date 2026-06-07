@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import re
+from itertools import permutations
 from copy import deepcopy
 from datetime import datetime, timedelta
 from typing import Any
@@ -467,6 +468,11 @@ def _build_result(
     if len(selected_pois) < MIN_ROUTE_POIS or len(selected_pois) > MAX_ROUTE_POIS:
         raise RoutePlannerError(f"route must contain {MIN_ROUTE_POIS}-{MAX_ROUTE_POIS} POIs.")
     stay_overrides = stay_overrides or {}
+    before_order = [poi["id"] for poi in selected_pois]
+    optimized_pois, optimize_debug = optimize_route_order(selected_pois)
+    role_by_id = {poi["id"]: role for poi, role in zip(selected_pois, roles)}
+    selected_pois = optimized_pois
+    roles = [role_by_id[poi["id"]] for poi in selected_pois]
     route_nodes = [
         {"placeId": poi["id"], "role": role, "type": poi["type"]}
         for poi, role in zip(selected_pois, roles)
@@ -489,16 +495,117 @@ def _build_result(
         "walkingKm": round(walking_meters / 1000, 1),
         "waitRisk": _route_wait_risk(selected_pois),
         "placeIds": [poi["id"] for poi in selected_pois],
+        "order": [poi["id"] for poi in selected_pois],
         "timeline": timeline,
         "transportSummary": "V1 使用经纬度直线距离估算步行时间，后续可替换为高德步行路径。",
         "transportSegments": clean_segments,
     }
+    optimize_debug.update(
+        {
+            "beforeOrder": before_order,
+            "afterOrder": route["placeIds"],
+            "routeTotalDistance": round(walking_meters),
+            "routeTotalDuration": walk_total,
+        }
+    )
+    optimized_places = _frontend_selected_places(selected_pois)
     return {
-        "places": _frontend_selected_places(selected_pois),
+        "places": optimized_places,
+        "optimizedPlaces": deepcopy(optimized_places),
         "route": route,
         "diff": diff,
+        "debug": optimize_debug,
         "selectedPois": selected_pois,
     }
+
+
+def optimize_route_order(selected_pois: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    debug = {
+        "beforeOrder": [poi.get("id") for poi in selected_pois],
+        "afterOrder": [poi.get("id") for poi in selected_pois],
+        "routeOptimized": False,
+        "fallbackUsed": False,
+        "optimizeMethod": "none",
+        "routeTotalDistance": 0,
+        "routeTotalDuration": 0,
+    }
+    if len(selected_pois) <= 2:
+        return selected_pois, debug
+    try:
+        for poi in selected_pois:
+            _coordinates_for_distance(poi)
+        start = selected_pois[0]
+        fixed_suffix: list[dict[str, Any]] = []
+        candidates = selected_pois[1:]
+        if selected_pois[-1].get("type") == "dinner" and selected_pois[1].get("type") != "dinner":
+            fixed_suffix = [selected_pois[-1]]
+            candidates = selected_pois[1:-1]
+        if len(candidates) <= 8:
+            ordered_tail = _shortest_permutation(start, candidates, fixed_suffix)
+            method = "bruteforce"
+        else:
+            ordered_tail = _nearest_neighbor_order(start, candidates)
+            method = "nearest_neighbor"
+        optimized = [start, *ordered_tail, *fixed_suffix]
+        before_distance = _route_distance(selected_pois)
+        after_distance = _route_distance(optimized)
+        debug.update(
+            {
+                "afterOrder": [poi["id"] for poi in optimized],
+                "routeOptimized": debug["beforeOrder"] != [poi["id"] for poi in optimized],
+                "fallbackUsed": False,
+                "optimizeMethod": method,
+                "routeTotalDistance": round(after_distance),
+                "routeTotalDuration": estimate_walk_minutes(after_distance),
+            }
+        )
+        if after_distance <= before_distance:
+            return optimized, debug
+        debug.update(
+            {
+                "afterOrder": [poi["id"] for poi in selected_pois],
+                "routeOptimized": False,
+                "fallbackUsed": True,
+                "optimizeMethod": f"{method}_kept_original",
+            }
+        )
+        return selected_pois, debug
+    except (KeyError, TypeError, ValueError, RoutePlannerError):
+        debug["fallbackUsed"] = True
+        debug["optimizeMethod"] = "fallback_missing_location"
+        return selected_pois, debug
+
+
+def _shortest_permutation(
+    start: dict[str, Any],
+    candidates: list[dict[str, Any]],
+    fixed_suffix: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    suffix = fixed_suffix or []
+    return list(min(permutations(candidates), key=lambda order: _route_distance([start, *order, *suffix])))
+
+
+def _nearest_neighbor_order(start: dict[str, Any], candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    remaining = candidates[:]
+    ordered: list[dict[str, Any]] = []
+    current = start
+    while remaining:
+        nearest = min(remaining, key=lambda poi: calculate_distance_meters(current, poi))
+        ordered.append(nearest)
+        remaining.remove(nearest)
+        current = nearest
+    return ordered
+
+
+def _route_distance(pois: list[dict[str, Any]]) -> float:
+    return sum(calculate_distance_meters(current, next_poi) for current, next_poi in zip(pois, pois[1:]))
+
+
+def _coordinates_for_distance(poi: dict[str, Any]) -> tuple[float, float]:
+    location = poi.get("location") or {}
+    lng = float(location["lng"])
+    lat = float(location["lat"])
+    return lng, lat
 
 
 def _build_timeline_and_transport(

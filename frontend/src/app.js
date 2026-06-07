@@ -362,9 +362,18 @@ function getPlace(id) {
   return clone(placeById[id]);
 }
 
-function resolveRoute(routeConfig) {
-  const timelineByPlace = Object.fromEntries(routeConfig.timeline.map((item) => [item.placeId, item]));
-  const transportSegments = routeConfig.transportSegments.map((segment) => {
+function resolveRoute(routeConfig, optimizedPlaces = null) {
+  const optimizedOrder = Array.isArray(routeConfig.order) && routeConfig.order.length
+    ? routeConfig.order
+    : Array.isArray(optimizedPlaces) && optimizedPlaces.length
+      ? optimizedPlaces.map((place) => place.id)
+      : routeConfig.placeIds;
+  const routeConfigWithOrder = {
+    ...routeConfig,
+    placeIds: optimizedOrder,
+  };
+  const timelineByPlace = Object.fromEntries(routeConfigWithOrder.timeline.map((item) => [item.placeId, item]));
+  const transportSegments = routeConfigWithOrder.transportSegments.map((segment) => {
     const from = placeById[segment.fromId];
     const to = placeById[segment.toId];
     return {
@@ -375,11 +384,11 @@ function resolveRoute(routeConfig) {
     };
   });
 
-  const nodes = routeConfig.placeIds.map((placeId, index) => {
+  const nodes = routeConfigWithOrder.placeIds.map((placeId, index) => {
     const place = getPlace(placeId);
     const time = timelineByPlace[placeId] || {};
     const segment = transportSegments[index];
-    const nextPlace = routeConfig.placeIds[index + 1] ? placeById[routeConfig.placeIds[index + 1]] : null;
+    const nextPlace = routeConfigWithOrder.placeIds[index + 1] ? placeById[routeConfigWithOrder.placeIds[index + 1]] : null;
 
     return {
       ...place,
@@ -508,9 +517,13 @@ function applyRouteData(routeData) {
   if (!routeData?.route || !Array.isArray(routeData.places)) {
     throw new Error("routeData is missing route or places");
   }
-  placeById = Object.fromEntries(routeData.places.map((place) => [place.id, place]));
-  const route = resolveRoute(routeData.route);
+  const orderedPlaces = Array.isArray(routeData.optimizedPlaces) && routeData.optimizedPlaces.length
+    ? routeData.optimizedPlaces
+    : routeData.places;
+  placeById = Object.fromEntries(orderedPlaces.map((place) => [place.id, place]));
+  const route = resolveRoute(routeData.route, orderedPlaces);
   route.hint = routeData.message || "";
+  route.debug = routeData.debug || null;
   return {
     route,
     diff: routeData.diff || null,
@@ -549,6 +562,7 @@ function routeToConfig(route) {
     walkingKm: route.walkingKm,
     waitRisk: route.waitRisk,
     transportSummary: route.transportSummary,
+    order: route.nodes.map((node) => node.id),
     placeIds: route.nodes.map((node) => node.id),
     timeline: route.nodes.map((node) => ({ placeId: node.id, arrive: node.arrive, leave: node.leave })),
     transportSegments: route.transportSegments.map((segment) => ({

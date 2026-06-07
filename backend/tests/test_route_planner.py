@@ -12,7 +12,7 @@ from backend.route_planner import generate_adjusted_route, generate_default_rout
 
 
 ROOT = Path(__file__).resolve().parents[2]
-ROUTE_DATA_KEYS = {"constraints", "places", "route", "diff", "message", "adjustmentButtons"}
+ROUTE_DATA_KEYS = {"constraints", "places", "optimizedPlaces", "route", "diff", "debug", "message", "adjustmentButtons"}
 
 
 def catalog() -> list[dict]:
@@ -38,9 +38,12 @@ def assert_route_shape(testcase: unittest.TestCase, route_data: dict) -> None:
     route = route_data["route"]
     place_ids = route["placeIds"]
     places = place_by_id(route_data)
+    debug = route_data["debug"]
     testcase.assertGreaterEqual(len(place_ids), 3)
     testcase.assertLessEqual(len(place_ids), 5)
     testcase.assertEqual(set(place_ids), set(places))
+    testcase.assertEqual(route.get("order"), place_ids)
+    testcase.assertEqual([place["id"] for place in route_data["optimizedPlaces"]], place_ids)
     testcase.assertEqual([item["placeId"] for item in route["timeline"]], place_ids)
     testcase.assertEqual(len(route["transportSegments"]), max(0, len(place_ids) - 1))
     for segment, from_id, to_id in zip(route["transportSegments"], place_ids, place_ids[1:]):
@@ -50,6 +53,9 @@ def assert_route_shape(testcase: unittest.TestCase, route_data: dict) -> None:
     testcase.assertIsInstance(route["budgetPerPerson"], (int, float))
     testcase.assertIsInstance(route["durationMinutes"], int)
     testcase.assertIsInstance(route["walkingKm"], (int, float))
+    testcase.assertEqual(debug["afterOrder"], place_ids)
+    for key in ["beforeOrder", "afterOrder", "routeOptimized", "fallbackUsed", "optimizeMethod", "routeTotalDistance", "routeTotalDuration"]:
+        testcase.assertIn(key, debug)
 
 
 class RoutePlannerApiTest(unittest.TestCase):
@@ -146,6 +152,10 @@ class RoutePlannerApiTest(unittest.TestCase):
         planned = generate_adjusted_route("photo", catalog())
         photo_poi = next(poi for poi in planned["selectedPois"] if poi["type"] == "photo")
         self.assertGreaterEqual(photo_poi["photoScore"], 4)
+        self.assertTrue(planned["debug"]["routeOptimized"])
+        self.assertEqual(planned["debug"]["optimizeMethod"], "bruteforce")
+        self.assertEqual(planned["route"]["placeIds"], planned["route"]["order"])
+        self.assertEqual([place["id"] for place in planned["optimizedPlaces"]], planned["route"]["placeIds"])
 
     def test_budget_recalculation_matches_selected_pois(self) -> None:
         for adjustment_type in [None, "restaurantBusy", "budget100", "noCoffee", "twoHours", "photo"]:

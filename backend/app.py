@@ -411,24 +411,46 @@ def _route_data(
     message: str = "",
 ) -> dict:
     route_payload = deepcopy(route or DEFAULT_ROUTE)
+    places = _places_for_route(route_payload)
+    debug = _debug_for_unoptimized_route(route_payload, fallback_used=not POI_CATALOG_LOADED)
     return {
         "constraints": _constraints_payload(constraints),
-        "places": _places_for_route(route_payload),
+        "places": places,
+        "optimizedPlaces": deepcopy(places),
         "route": route_payload,
         "diff": deepcopy(diff),
+        "debug": debug,
         "message": message,
         "adjustmentButtons": deepcopy(ADJUSTMENT_BUTTONS),
     }
 
 
 def _catalog_route_data(planned: dict, constraints: dict | None = None, message: str = "") -> dict:
+    optimized_places = deepcopy(planned.get("optimizedPlaces") or planned["places"])
     return {
         "constraints": _constraints_payload(constraints),
         "places": deepcopy(planned["places"]),
+        "optimizedPlaces": optimized_places,
         "route": deepcopy(planned["route"]),
         "diff": deepcopy(planned.get("diff")),
+        "debug": deepcopy(planned.get("debug") or _debug_for_unoptimized_route(planned["route"])),
         "message": message,
         "adjustmentButtons": deepcopy(ADJUSTMENT_BUTTONS),
+    }
+
+
+def _debug_for_unoptimized_route(route: dict, fallback_used: bool = True) -> dict:
+    place_ids = deepcopy(route.get("placeIds", []))
+    walking_km = route.get("walkingKm", 0)
+    duration_minutes = route.get("durationMinutes", 0)
+    return {
+        "beforeOrder": place_ids,
+        "afterOrder": place_ids,
+        "routeOptimized": False,
+        "fallbackUsed": fallback_used,
+        "optimizeMethod": "legacy_route_order",
+        "routeTotalDistance": round(float(walking_km) * 1000) if isinstance(walking_km, (int, float)) else 0,
+        "routeTotalDuration": int(duration_minutes) if isinstance(duration_minutes, (int, float)) else 0,
     }
 
 
