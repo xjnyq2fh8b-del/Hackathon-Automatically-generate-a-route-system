@@ -132,14 +132,6 @@
         { "fromId": "baitacoffee", "toId": "xinbailu", "method": "步行", "duration": "约10分钟" }
       ]
     },
-    "adjustmentButtons": [
-      { "type": "restaurantBusy", "label": "餐厅排队太久" },
-      { "type": "budget100", "label": "预算降到100" },
-      { "type": "noCoffee", "label": "不要咖啡" },
-      { "type": "twoHours", "label": "只剩2小时" },
-      { "type": "photo", "label": "想更适合拍照" }
-    ],
-    "diff": null,
-    "message": ""
+    "diff": null
   }
 }
