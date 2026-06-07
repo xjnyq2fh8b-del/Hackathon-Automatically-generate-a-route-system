@@ -62,6 +62,76 @@ def generate_default_route(poi_catalog: list[dict[str, Any]]) -> dict[str, Any]:
     )
 
 
+def generate_route_for_constraints(poi_catalog: list[dict[str, Any]], constraints: dict[str, Any] | None) -> dict[str, Any]:
+    constraints = constraints or {}
+    if not any(
+        constraints.get(key) is True
+        for key in ("mealFirst", "preferRest", "preferIndoor", "preferLessWalking", "preferProperDinner")
+    ):
+        return generate_default_route(poi_catalog)
+
+    start = _choose_start(poi_catalog)
+    scenic = _choose_scenic(poi_catalog, start)
+
+    if constraints.get("mealFirst") is True:
+        dinner = _choose_proper_dinner(poi_catalog, start, prefer_low_walk=constraints.get("preferLessWalking") is True)
+        buffer = _choose_non_coffee_buffer(poi_catalog, dinner, scenic) or _choose_budget_buffer(poi_catalog, dinner)
+        return _with_travel_advice(
+            _build_result(
+                [start, dinner, scenic, buffer],
+                roles=["start", "dinner", "scenic", "buffer"],
+                route_name="先吃饭再逛线",
+                explanation="已把餐饮提前，适合当前更想先补充体力再游览的场景。",
+                diff=None,
+            ),
+            constraints,
+        )
+
+    if constraints.get("preferIndoor") is True:
+        indoor = _choose_indoor_buffer(poi_catalog, start)
+        dinner = _choose_proper_dinner(poi_catalog, indoor, prefer_low_walk=constraints.get("preferLessWalking") is True)
+        return _with_travel_advice(
+            _build_result(
+                [start, indoor, scenic, dinner],
+                roles=["start", "buffer", "scenic", "dinner"],
+                route_name="室内缓冲少走路线",
+                explanation="已优先加入商场或室内缓冲点，适合下雨、太热或不想长时间户外步行。",
+                diff=None,
+            ),
+            constraints,
+        )
+
+    if constraints.get("preferRest") is True or constraints.get("preferLessWalking") is True:
+        rest = _choose_rest_buffer(poi_catalog, start)
+        dinner = _choose_proper_dinner(poi_catalog, rest, prefer_low_walk=constraints.get("preferLessWalking") is True)
+        return _with_travel_advice(
+            _build_result(
+                [start, rest, scenic, dinner],
+                roles=["start", "buffer", "scenic", "dinner"],
+                route_name="轻松休息友好线",
+                explanation="已优先安排可坐下休息或补给的节点，降低连续步行压力。",
+                diff=None,
+            ),
+            constraints,
+        )
+
+    if constraints.get("preferProperDinner") is True:
+        dinner = _choose_proper_dinner(poi_catalog, scenic, prefer_low_walk=False)
+        buffer = _choose_buffer(poi_catalog, scenic, dinner, prefer_coffee=True)
+        return _with_travel_advice(
+            _build_result(
+                [start, scenic, buffer, dinner],
+                roles=["start", "scenic", "buffer", "dinner"],
+                route_name="杭帮正餐体验线",
+                explanation="已优先选择更像正餐的本地餐饮点，避免默认落到快餐型小吃。",
+                diff=None,
+            ),
+            constraints,
+        )
+
+    return generate_default_route(poi_catalog)
+
+
 def generate_adjusted_route(adjustment_type: str, poi_catalog: list[dict[str, Any]]) -> dict[str, Any]:
     default = generate_default_route(poi_catalog)
     default_pois = default["selectedPois"]
@@ -241,6 +311,16 @@ def _choose_budget_buffer(pois: list[dict[str, Any]], previous: dict[str, Any]) 
     return _best(candidates, lambda poi: _score_budget_buffer(poi, previous), "budget buffer")
 
 
+def _choose_rest_buffer(pois: list[dict[str, Any]], previous: dict[str, Any]) -> dict[str, Any]:
+    candidates = [poi for poi in get_non_coffee_buffer_candidates(pois) if poi.get("type") in {"rest", "mall"}]
+    return _best(candidates, lambda poi: _score_rest_buffer(poi, previous), "rest buffer")
+
+
+def _choose_indoor_buffer(pois: list[dict[str, Any]], previous: dict[str, Any]) -> dict[str, Any]:
+    candidates = [poi for poi in get_non_coffee_buffer_candidates(pois) if poi.get("type") == "mall" or "shelter" in poi.get("experienceTags", [])]
+    return _best(candidates, lambda poi: _score_rest_buffer(poi, previous), "indoor buffer")
+
+
 def _choose_dinner(
     pois: list[dict[str, Any]],
     previous: dict[str, Any],
@@ -257,6 +337,15 @@ def _choose_dinner(
     if budget_limit is not None:
         candidates = [poi for poi in candidates if _number(poi.get("avgCost")) <= budget_limit + 15] or candidates
     return _best(candidates, lambda poi: _score_dinner(poi, previous, low_wait, low_budget), "dinner")
+
+
+def _choose_proper_dinner(pois: list[dict[str, Any]], previous: dict[str, Any], prefer_low_walk: bool) -> dict[str, Any]:
+    candidates = [
+        poi
+        for poi in get_dinner_candidates(pois)
+        if "snack" not in poi.get("experienceTags", []) and _number(poi.get("avgCost")) >= 45
+    ] or get_dinner_candidates(pois)
+    return _best(candidates, lambda poi: _score_proper_dinner(poi, previous, prefer_low_walk), "proper dinner")
 
 
 def _choose_photo_point(pois: list[dict[str, Any]], scenic: dict[str, Any]) -> dict[str, Any]:
@@ -393,6 +482,18 @@ def _score_budget_buffer(poi: dict[str, Any], previous: dict[str, Any]) -> float
     )
 
 
+def _score_rest_buffer(poi: dict[str, Any], previous: dict[str, Any]) -> float:
+    tags = set(poi.get("experienceTags", []))
+    return (
+        _number(poi.get("restScore")) * 2
+        + _number(poi.get("familyScore"))
+        + _number(poi.get("walkFriendlyScore"))
+        + (2 if "shelter" in tags else 0)
+        - calculate_distance_meters(previous, poi) / 500
+        + _open_status_bonus(poi)
+    )
+
+
 def _score_dinner(poi: dict[str, Any], previous: dict[str, Any], low_wait: bool, low_budget: bool) -> float:
     return (
         _number(poi.get("localFlavorScore")) * 1.5
@@ -401,6 +502,20 @@ def _score_dinner(poi: dict[str, Any], previous: dict[str, Any], low_wait: bool,
         - _risk_penalty(poi.get("waitRisk")) * (2 if low_wait else 1)
         - _number(poi.get("avgCost")) / (12 if low_budget else 30)
         - calculate_distance_meters(previous, poi) / 700
+        + _open_status_bonus(poi)
+    )
+
+
+def _score_proper_dinner(poi: dict[str, Any], previous: dict[str, Any], prefer_low_walk: bool) -> float:
+    tags = set(poi.get("experienceTags", []))
+    return (
+        _number(poi.get("localFlavorScore")) * 2
+        + _number(poi.get("familyScore"))
+        + _number(poi.get("walkFriendlyScore")) * (1.5 if prefer_low_walk else 1)
+        + (3 if "local-cuisine" in tags else 0)
+        + (1 if "near-lake" in tags else 0)
+        - _risk_penalty(poi.get("waitRisk"))
+        - calculate_distance_meters(previous, poi) / (450 if prefer_low_walk else 650)
         + _open_status_bonus(poi)
     )
 
@@ -457,6 +572,20 @@ def _diff(title: str, action: str, rows: list[tuple[str, str]]) -> dict[str, Any
         "action": action,
         "rows": [{"label": label, "value": value} for label, value in rows],
     }
+
+
+def _with_travel_advice(planned: dict[str, Any], constraints: dict[str, Any]) -> dict[str, Any]:
+    if not (
+        constraints.get("preferLessWalking") is True
+        or constraints.get("preferIndoor") is True
+        or constraints.get("weather") == "rain"
+    ):
+        return planned
+    planned = deepcopy(planned)
+    advice = "当前同行人或天气条件可能不太适合长时间步行，建议必要时打车到下一站。"
+    summary = planned["route"].get("transportSummary") or ""
+    planned["route"]["transportSummary"] = f"{summary} {advice}".strip()
+    return planned
 
 
 def _number(value: Any) -> float:

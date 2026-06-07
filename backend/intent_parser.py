@@ -24,6 +24,13 @@ def parse_intent_with_rules(message: str) -> dict[str, Any]:
     wants_low_wait = _contains_any(text, ["排队太久", "少排队", "人少点", "换一家餐厅", "餐厅太挤", "餐厅排队", "等位", "queue", "busy"])
     wants_two_hours = _contains_any(text, ["只剩2小时", "只剩两小时", "两小时内", "2小时内", "时间不够", "快一点", "2小时", "两小时", "two hours"])
     wants_photo = _contains_any(text, ["拍照", "出片", "适合拍照", "好看一点", "风景好", "photo"])
+    wants_meal_first = _contains_any(text, ["饿了", "先吃饭", "先找吃", "先吃点", "饭点", "吃饭优先", "先用餐"])
+    wants_proper_dinner = _contains_any(text, ["吃好一点", "吃好点", "杭帮菜", "正餐", "正式吃饭", "像样点", "不要快餐"])
+    wants_rest = _contains_any(text, ["休息一下", "坐一会", "坐一下", "歇一会", "找个地方休息", "想休息", "走累了"])
+    wants_indoor = _contains_any(text, ["下雨", "雨天", "室内", "太热", "太冷", "避雨", "有遮挡"])
+    wants_less_walking = _contains_any(text, ["少走路", "别走太多", "不要走太久", "走不动", "老人", "老年人", "小孩", "孩子", "带娃", "亲子", "累了"])
+    has_elder = _contains_any(text, ["老人", "老年人", "长辈", "爸妈", "父母"])
+    has_child = _contains_any(text, ["小孩", "孩子", "带娃", "亲子", "儿童"])
 
     constraints_patch: dict[str, Any] = {}
     if wants_budget100:
@@ -36,6 +43,25 @@ def parse_intent_with_rules(message: str) -> dict[str, Any]:
         constraints_patch["durationMinutes"] = 120
     if wants_photo:
         constraints_patch["preferPhoto"] = True
+    if wants_meal_first:
+        constraints_patch["mealFirst"] = True
+    if wants_proper_dinner:
+        constraints_patch["preferProperDinner"] = True
+    if wants_rest:
+        constraints_patch["preferRest"] = True
+    if wants_indoor:
+        constraints_patch["preferIndoor"] = True
+    if "下雨" in text or "雨天" in text or "避雨" in text:
+        constraints_patch["weather"] = "rain"
+    if wants_less_walking:
+        constraints_patch["preferLessWalking"] = True
+    companions = []
+    if has_elder:
+        companions.append("elder")
+    if has_child:
+        companions.append("child")
+    if companions:
+        constraints_patch["companions"] = sorted(set(companions))
 
     adjustment_type = None
 
@@ -119,7 +145,7 @@ def _coerce_create_route(response: dict[str, Any]) -> dict[str, Any] | None:
 
     time_window = response.get("timeWindow")
     avoid = response.get("avoid")
-    return {
+    result = {
         "intent": "createRoute",
         "origin": response.get("origin"),
         "timeWindow": time_window if isinstance(time_window, dict) else {},
@@ -129,3 +155,10 @@ def _coerce_create_route(response: dict[str, Any]) -> dict[str, Any] | None:
         "avoid": avoid if isinstance(avoid, list) else [],
         "strategy": response.get("strategy") or "default",
     }
+    for key in ("mealFirst", "preferRest", "preferIndoor", "preferLessWalking", "preferProperDinner"):
+        if isinstance(response.get(key), bool):
+            result[key] = response[key]
+    weather = response.get("weather")
+    if isinstance(weather, str) and weather:
+        result["weather"] = weather
+    return result

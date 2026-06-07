@@ -166,6 +166,21 @@ class LLMConfigTest(unittest.TestCase):
                 with self.subTest(text=text):
                     self.assertEqual(parse_intent(text)["adjustmentType"], expected)
 
+    def test_create_route_phrases_parse_to_constraints(self) -> None:
+        cases = {
+            "我饿了，想先吃饭": ("mealFirst", True),
+            "想吃好一点的杭帮菜正餐": ("preferProperDinner", True),
+            "我想找个地方休息一下": ("preferRest", True),
+            "今天下雨，想室内少走路": ("weather", "rain"),
+            "带老人小孩一起玩，少走路": ("preferLessWalking", True),
+        }
+        with patch("backend.llm_client.call_llm_for_intent", return_value=None):
+            for text, (key, expected) in cases.items():
+                with self.subTest(text=text):
+                    intent = parse_intent(text)
+                    self.assertEqual(intent["intent"], "createRoute")
+                    self.assertEqual(intent["constraintsPatch"][key], expected)
+
     def test_chat_route_survives_llm_request_failure(self) -> None:
         with patch("backend.llm_client.call_llm_for_intent", side_effect=RuntimeError("llm failed")):
             response = chat_route(TextRequest(text="只剩两小时"))
@@ -233,6 +248,37 @@ class LLMConfigTest(unittest.TestCase):
                     route_data = chat_route(TextRequest(message=message))["routeData"]
                     self.assertNotEqual(default_ids, route_data["route"]["placeIds"])
                     self.assertIsInstance(route_data["diff"], dict)
+
+    def test_create_route_strategies_change_route_without_adjustment_diff(self) -> None:
+        cases = {
+            "我想找个地方休息一下": "轻松休息友好线",
+            "我饿了，想先吃饭": "先吃饭再逛线",
+            "想吃好一点的杭帮菜正餐": "杭帮正餐体验线",
+            "今天下雨，想室内少走路": "室内缓冲少走路线",
+        }
+        with patch("backend.llm_client.call_llm_for_intent", return_value=None):
+            default_ids = chat_route(TextRequest(message="我想现在出发逛西湖"))["routeData"]["route"]["placeIds"]
+            for message, expected_name in cases.items():
+                with self.subTest(message=message):
+                    route_data = chat_route(TextRequest(message=message))["routeData"]
+                    self.assertEqual(route_data["route"]["name"], expected_name)
+                    self.assertNotEqual(default_ids, route_data["route"]["placeIds"])
+                    self.assertIsNone(route_data["diff"])
+
+    def test_elder_child_and_rain_add_travel_advice(self) -> None:
+        with patch("backend.llm_client.call_llm_for_intent", return_value=None):
+            route_data = chat_route(TextRequest(message="带老人小孩一起玩，少走路"))["routeData"]
+        self.assertIn("建议必要时打车到下一站", route_data["route"]["transportSummary"])
+        self.assertEqual(route_data["constraints"]["companions"], ["child", "elder"])
+        self.assertTrue(route_data["constraints"]["preferLessWalking"])
+
+    def test_constraints_chips_follow_user_input(self) -> None:
+        with patch("backend.llm_client.call_llm_for_intent", return_value=None):
+            route_data = chat_route(TextRequest(message="今天下雨，想室内少走路"))["routeData"]
+        chips = {chip["key"]: chip["value"] for chip in route_data["constraints"]["chips"]}
+        self.assertIn("室内优先", chips["偏好"])
+        self.assertIn("少走路", chips["偏好"])
+        self.assertEqual(chips["天气"], "下雨")
 
     def test_route_api_response_does_not_include_llm_api_key(self) -> None:
         secret = "sk-test-should-not-leak"

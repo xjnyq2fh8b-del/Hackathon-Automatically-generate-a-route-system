@@ -33,7 +33,13 @@ createRoute 输出格式：
   "companions": "friends",
   "preferences": ["scenic", "coffee", "dinner", "low_wait"],
   "avoid": [],
-  "strategy": "default"
+  "strategy": "default",
+  "mealFirst": false,
+  "preferRest": false,
+  "preferIndoor": false,
+  "preferLessWalking": false,
+  "preferProperDinner": false,
+  "weather": null
 }
 
 adjustRoute 输出格式：
@@ -51,7 +57,14 @@ adjustRoute 输出格式：
 预算降到100以内对应 budget100。
 不想喝咖啡对应 noCoffee。
 只剩2小时对应 twoHours。
-想更适合拍照对应 photo。"""
+想更适合拍照对应 photo。
+
+如果用户是第一次描述出行需求，优先输出 createRoute，并把自然语言转成偏好字段：
+饿了、先吃饭、饭点、先找吃的 -> mealFirst true。
+想吃好一点、杭帮菜、正餐、正式吃饭 -> preferProperDinner true。
+休息一下、坐一会儿、找个地方歇 -> preferRest true。
+下雨、太热、太冷、室内 -> preferIndoor true，并在下雨时 weather 为 rain。
+老人、小孩、少走路、走不动、累了 -> preferLessWalking true，并保留 companions。"""
 
 
 @dataclass(frozen=True, repr=False)

@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from backend.intent_parser import parse_intent
 from backend.poi_catalog import load_poi_catalog_or_fallback, to_frontend_places
-from backend.route_planner import RoutePlannerError, generate_adjusted_route, generate_default_route
+from backend.route_planner import RoutePlannerError, generate_adjusted_route, generate_default_route, generate_route_for_constraints
 
 
 TRUE_VALUES = {"1", "true", "yes", "on"}
@@ -436,7 +436,8 @@ def _try_catalog_default_route(constraints: dict | None = None, message: str = "
     if not POI_CATALOG_LOADED:
         return None
     try:
-        return _catalog_route_data(generate_default_route(POI_CATALOG), constraints=constraints, message=message)
+        planned = generate_route_for_constraints(POI_CATALOG, constraints or {})
+        return _catalog_route_data(planned, constraints=constraints, message=message)
     except (RoutePlannerError, KeyError, TypeError, ValueError):
         return None
 
@@ -464,7 +465,46 @@ def _constraints_payload(active_constraints: dict | None = None) -> dict:
     for key, value in constraints.items():
         if value not in (None, "", []):
             payload[key] = value
+    if constraints:
+        payload["chips"] = _constraint_chips(constraints)
+        payload["summary"] = "｜".join(chip["value"] for chip in payload["chips"] if chip.get("value"))
     return payload
+
+
+def _constraint_chips(constraints: dict) -> list[dict[str, str]]:
+    chips = [{"key": "出发地", "value": "湖滨银泰 in77"}]
+    duration = constraints.get("durationMinutes")
+    chips.append({"key": "时间", "value": f"{int(duration)}分钟内" if isinstance(duration, (int, float)) and not isinstance(duration, bool) else "14:00-18:00"})
+    budget = constraints.get("budgetMax")
+    chips.append({"key": "预算", "value": f"人均{int(budget)}以内" if isinstance(budget, (int, float)) and not isinstance(budget, bool) else "人均150"})
+
+    preferences = []
+    avoid_types = constraints.get("avoidTypes", [])
+    if constraints.get("preferLowWait") is True:
+        preferences.append("少排队")
+    if isinstance(avoid_types, list) and "coffee" in avoid_types:
+        preferences.append("不喝咖啡")
+    if constraints.get("preferPhoto") is True:
+        preferences.append("适合拍照")
+    if constraints.get("mealFirst") is True:
+        preferences.append("先吃饭")
+    if constraints.get("preferProperDinner") is True:
+        preferences.append("正餐")
+    if constraints.get("preferRest") is True:
+        preferences.append("可休息")
+    if constraints.get("preferIndoor") is True:
+        preferences.append("室内优先")
+    if constraints.get("preferLessWalking") is True:
+        preferences.append("少走路")
+    chips.append({"key": "偏好", "value": "、".join(preferences) if preferences else "少排队"})
+
+    companions = constraints.get("companions", [])
+    if isinstance(companions, list) and companions:
+        labels = {"elder": "老人", "child": "小孩"}
+        chips.append({"key": "同行", "value": "、".join(labels.get(item, str(item)) for item in companions)})
+    if constraints.get("weather") == "rain":
+        chips.append({"key": "天气", "value": "下雨"})
+    return chips
 
 
 def _merge_constraints(active_constraints: dict | None, constraints_patch: dict | None) -> dict:
@@ -509,10 +549,49 @@ def _constraints_patch_from_intent(intent: dict) -> dict:
             patch["preferLowWait"] = True
         if "photo" in preferences:
             patch["preferPhoto"] = True
+        if any(item in preferences for item in ["food_first", "meal_first", "eat_first"]):
+            patch["mealFirst"] = True
+        if any(item in preferences for item in ["proper_dinner", "local_food", "local-cuisine", "dinner_quality"]):
+            patch["preferProperDinner"] = True
+        if any(item in preferences for item in ["rest", "rest_first", "sit", "relax"]):
+            patch["preferRest"] = True
+        if any(item in preferences for item in ["indoor", "shelter", "rain"]):
+            patch["preferIndoor"] = True
+        if any(item in preferences for item in ["less_walking", "short_walk", "family", "elder", "child"]):
+            patch["preferLessWalking"] = True
     avoid = intent.get("avoid")
     if isinstance(avoid, list) and "coffee" in avoid:
         patch["avoidTypes"] = [*patch.get("avoidTypes", []), "coffee"] if isinstance(patch.get("avoidTypes"), list) else ["coffee"]
+    for key in ("mealFirst", "preferRest", "preferIndoor", "preferLessWalking", "preferProperDinner"):
+        if intent.get(key) is True:
+            patch[key] = True
+    weather = intent.get("weather")
+    if isinstance(weather, str) and weather:
+        patch["weather"] = weather
+        if weather == "rain":
+            patch["preferIndoor"] = True
+    companions = _normalize_companions(intent.get("companions"))
+    if companions:
+        patch["companions"] = companions
+        if any(item in companions for item in ["elder", "child"]):
+            patch["preferLessWalking"] = True
     return patch
+
+
+def _normalize_companions(value: Any) -> list[str]:
+    raw_items = value if isinstance(value, list) else [value] if isinstance(value, str) else []
+    companions = []
+    for item in raw_items:
+        if not isinstance(item, str):
+            continue
+        lowered = item.lower()
+        if any(keyword in lowered for keyword in ["elder", "old", "老人", "长辈", "parent", "父母"]):
+            companions.append("elder")
+        elif any(keyword in lowered for keyword in ["child", "kid", "小孩", "孩子", "儿童", "family"]):
+            companions.append("child")
+        elif lowered:
+            companions.append(lowered)
+    return sorted(set(companions))
 
 
 def _effective_adjustment(adjustment_type: str | None, constraints: dict) -> str | None:
