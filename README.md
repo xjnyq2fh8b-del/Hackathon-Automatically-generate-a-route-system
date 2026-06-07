@@ -106,11 +106,7 @@ Westlake Now 的设计思路是：
 
 ## Screenshots
 
-![首页自然语言输入](docs/assets/product-design/01-home-input.png)
-
-![路线时间轴](docs/assets/product-design/02-route-timeline.png)
-
-![地图路线展示](docs/assets/product-design/03-route-map.png)
+暂无截图文件。后续如需补充产品截图，可放在 `docs/assets/product-design/` 目录下。
 
 ## System Architecture
 
