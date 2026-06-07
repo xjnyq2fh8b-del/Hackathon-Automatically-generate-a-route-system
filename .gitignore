@@ -1,5 +1,11 @@
-node_modules/
+__pycache__/
+*.py[cod]
+.env
 .venv/
+venv/
+.pytest_cache/
+
+node_modules/
 .next/
 dist/
 build/
@@ -7,13 +13,9 @@ react-bits/
 .codex/skills/react-bits/
 docs/react-bits-skill.md
 
-__pycache__/
-*.pyc
-
 *.log
 *.mp4
 
-.env
 .env.*
 !.env.example
 frontend/src/config.generated.js

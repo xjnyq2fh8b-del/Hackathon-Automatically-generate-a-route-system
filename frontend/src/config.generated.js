@@ -1,0 +1,4 @@
+window.ROUTE_AGENT_ENV = {
+  "VITE_AMAP_KEY": "",
+  "VITE_AMAP_SECURITY_JS_CODE": ""
+};
