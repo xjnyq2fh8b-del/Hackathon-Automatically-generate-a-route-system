@@ -1888,7 +1888,7 @@ function renderPoiVisual(node, index) {
     : fallbackImageByPlaceId[node.id] || fallbackImageByType[node.type] || "";
   return `
     <div class="poi-visual ${displayText(node.type, "rest")} ${imageUrl ? "has-image" : ""}">
-      ${imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="${displayText(node.name, "地点图片")}" loading="lazy" onerror="this.closest('.poi-visual')?.classList.add('image-failed'); this.remove();">` : ""}
+      ${imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="${displayText(node.name, "地点图片")}" loading="lazy" decoding="async" onerror="this.closest('.poi-visual')?.classList.add('image-failed'); this.remove();">` : ""}
       <span class="poi-index">${index + 1}</span>
     </div>
   `;
