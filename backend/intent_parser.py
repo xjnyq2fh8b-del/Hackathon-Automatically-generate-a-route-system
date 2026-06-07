@@ -9,6 +9,7 @@ from backend import llm_client
 
 SUPPORTED_ADJUSTMENTS = {"restaurantBusy", "budget100", "noCoffee", "twoHours", "photo"}
 SUPPORTED_INTENTS = {"createRoute", "adjustRoute"}
+FOOD_EXCLUDE_CATEGORY = "food"
 
 
 def parse_intent(message: str, currentRoute: dict | None = None) -> dict[str, Any]:
@@ -20,6 +21,25 @@ def parse_intent(message: str, currentRoute: dict | None = None) -> dict[str, An
 
 def parse_intent_with_rules(message: str) -> dict[str, Any]:
     text = (message or "").lower()
+    wants_no_food = _contains_any(
+        text,
+        [
+            "不想吃饭",
+            "不吃饭",
+            "不要餐饮",
+            "去掉吃饭",
+            "删除餐厅",
+            "去掉餐厅",
+            "不要吃饭",
+            "不用吃饭",
+            "不安排吃饭",
+            "不安排餐厅",
+            "不想用餐",
+            "不要美食",
+            "no food",
+            "no restaurant",
+        ],
+    )
     wants_no_coffee = _contains_any(text, ["不想喝咖啡", "不要咖啡", "不喝咖啡", "不想咖啡", "换个休息点", "换一个休息点", "no coffee"])
     wants_budget100 = _contains_any(text, ["预算100", "100以内", "100内", "降到100", "便宜点", "省钱一点", "省钱", "太贵了", "预算", "budget"])
     wants_low_wait = _contains_any(text, ["排队太久", "少排队", "人少点", "换一家餐厅", "餐厅太挤", "餐厅排队", "等位", "queue", "busy"])
@@ -39,6 +59,13 @@ def parse_intent_with_rules(message: str) -> dict[str, Any]:
     constraints_patch: dict[str, Any] = {}
     if wants_budget100:
         constraints_patch["budgetMax"] = 100
+    if wants_no_food:
+        constraints_patch["excludeCategories"] = [FOOD_EXCLUDE_CATEGORY]
+        constraints_patch["avoidTypes"] = ["coffee", "dinner", "snack"]
+        constraints_patch["includeMeal"] = False
+        constraints_patch["mealFirst"] = False
+        constraints_patch["preferProperDinner"] = False
+        constraints_patch["preferSnack"] = False
     if wants_no_coffee:
         constraints_patch["avoidTypes"] = ["coffee"]
     if wants_low_wait:
@@ -47,9 +74,9 @@ def parse_intent_with_rules(message: str) -> dict[str, Any]:
         constraints_patch["durationMinutes"] = 120
     if wants_photo:
         constraints_patch["preferPhoto"] = True
-    if wants_meal_first:
+    if wants_meal_first and not wants_no_food:
         constraints_patch["mealFirst"] = True
-    if wants_proper_dinner:
+    if wants_proper_dinner and not wants_no_food:
         constraints_patch["preferProperDinner"] = True
     if wants_rest:
         constraints_patch["preferRest"] = True
@@ -61,7 +88,7 @@ def parse_intent_with_rules(message: str) -> dict[str, Any]:
         constraints_patch["preferLessWalking"] = True
     if wants_shopping:
         constraints_patch["preferShopping"] = True
-    if wants_snack:
+    if wants_snack and not wants_no_food:
         constraints_patch["preferSnack"] = True
     if wants_classic_scenic:
         constraints_patch["preferClassicScenic"] = True
@@ -78,7 +105,9 @@ def parse_intent_with_rules(message: str) -> dict[str, Any]:
 
     adjustment_type = None
 
-    if wants_two_hours:
+    if wants_no_food:
+        adjustment_type = None
+    elif wants_two_hours:
         adjustment_type = "twoHours"
     elif wants_no_coffee:
         adjustment_type = "noCoffee"
@@ -91,7 +120,7 @@ def parse_intent_with_rules(message: str) -> dict[str, Any]:
 
     return {
         "source": "rules",
-        "intent": "adjustRoute" if adjustment_type else "createRoute",
+        "intent": "adjustRoute" if adjustment_type or wants_no_food else "createRoute",
         "adjustmentType": adjustment_type,
         "constraintsPatch": constraints_patch,
         "rawText": message or "",
@@ -179,14 +208,17 @@ def _coerce_intent(response: str | dict | None) -> dict[str, Any] | None:
 
 def _coerce_adjust_route(response: dict[str, Any]) -> dict[str, Any] | None:
     adjustment_type = response.get("adjustmentType")
-    if adjustment_type not in SUPPORTED_ADJUSTMENTS:
-        return None
     constraints_patch = response.get("constraintsPatch")
+    constraints_patch = constraints_patch if isinstance(constraints_patch, dict) else {}
+    if adjustment_type is None and constraints_patch.get("excludeCategories"):
+        pass
+    elif adjustment_type not in SUPPORTED_ADJUSTMENTS:
+        return None
     return {
         "intent": "adjustRoute",
         "adjustmentType": adjustment_type,
         "targetNodeType": response.get("targetNodeType"),
-        "constraintsPatch": constraints_patch if isinstance(constraints_patch, dict) else {},
+        "constraintsPatch": constraints_patch,
     }
 
 

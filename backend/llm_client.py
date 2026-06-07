@@ -3,13 +3,23 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 from urllib import error, request
+
+try:
+    from dotenv import load_dotenv
+except ImportError:  # pragma: no cover - optional when env vars are injected by platform
+    load_dotenv = None
 
 
 TRUE_VALUES = {"1", "true", "yes", "on"}
 DEFAULT_TIMEOUT_SECONDS = 10
 DEFAULT_MAX_COMPLETION_TOKENS = 500
+ROOT_DIR = Path(__file__).resolve().parents[1]
+
+if load_dotenv:
+    load_dotenv(ROOT_DIR / ".env")
 SYSTEM_PROMPT = """你是本地路线 Agent 的意图解析器。
 你只输出 JSON。
 不要输出 Markdown。

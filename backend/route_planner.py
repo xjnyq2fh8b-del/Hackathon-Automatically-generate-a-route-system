@@ -352,6 +352,72 @@ def generate_adjusted_route(adjustment_type: str, poi_catalog: list[dict[str, An
     raise RoutePlannerError(f"unsupported adjustmentType: {adjustment_type}")
 
 
+def generate_route_excluding_categories(
+    poi_catalog: list[dict[str, Any]],
+    current_place_ids: list[str],
+    exclude_categories: list[str],
+    constraints: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if "food" not in set(exclude_categories):
+        return generate_route_for_constraints(poi_catalog, constraints or {})
+
+    by_id = {poi.get("id"): poi for poi in poi_catalog}
+    current_pois = [by_id[place_id] for place_id in current_place_ids if place_id in by_id]
+    if not current_pois:
+        current_pois = generate_default_route(poi_catalog, constraints or {})["selectedPois"]
+
+    kept = [poi for poi in current_pois if not is_food_poi(poi)]
+    removed = [poi for poi in current_pois if is_food_poi(poi)]
+    if not kept:
+        kept = [_choose_start(poi_catalog)]
+
+    selected = kept[:]
+    excluded_ids = {poi["id"] for poi in selected}
+    non_food_candidates = [
+        poi
+        for poi in poi_catalog
+        if poi.get("id") not in excluded_ids and not is_food_poi(poi) and poi.get("type") != "start"
+    ]
+    while len(selected) < MIN_ROUTE_POIS and non_food_candidates:
+        anchor = selected[-1]
+        next_poi = min(non_food_candidates, key=lambda poi: calculate_distance_meters(anchor, poi))
+        selected.append(next_poi)
+        excluded_ids.add(next_poi["id"])
+        non_food_candidates = [poi for poi in non_food_candidates if poi.get("id") not in excluded_ids]
+
+    if len(selected) < MIN_ROUTE_POIS:
+        result = _build_result(
+            selected,
+            roles=[_role_for_poi(poi) for poi in selected],
+            route_name="已去掉餐饮点",
+            explanation="已去掉餐饮点，但附近可替代点不足，当前只能保留较短路线。",
+            diff=None,
+            start_time=_start_time_from_constraints(constraints),
+            allow_short_route=True,
+        )
+    else:
+        result = _build_result(
+            selected[:MAX_ROUTE_POIS],
+            roles=[_role_for_poi(poi) for poi in selected[:MAX_ROUTE_POIS]],
+            route_name="无餐饮顺路路线",
+            explanation="已删除吃饭、餐厅、咖啡和小吃相关点位，并用非餐饮节点补足路线。",
+            diff=None,
+            start_time=_start_time_from_constraints(constraints),
+        )
+
+    result["diff"] = _diff(
+        "已去掉餐饮点",
+        "基于当前路线删除餐饮相关目的地，并重新补足和排序。",
+        [
+            ("删除节点", "、".join(poi["name"] for poi in removed) if removed else "当前路线没有餐饮节点"),
+            ("保留/补足节点", "、".join(poi["name"] for poi in result["selectedPois"])),
+            ("说明", "附近可替代点不足，已保留较短路线。" if len(result["selectedPois"]) < MIN_ROUTE_POIS else "已使用非餐饮节点补足路线。"),
+        ],
+    )
+    result["removedPois"] = removed
+    return result
+
+
 def _choose_start(pois: list[dict[str, Any]]) -> dict[str, Any]:
     starts = [poi for poi in pois if poi.get("type") == "start"]
     if not starts:
@@ -462,10 +528,11 @@ def _build_result(
     diff: dict[str, Any] | None,
     stay_overrides: dict[str, int] | None = None,
     start_time: str = DEFAULT_START_TIME,
+    allow_short_route: bool = False,
 ) -> dict[str, Any]:
     if len(selected_pois) != len(roles):
         raise RoutePlannerError("selected_pois and roles length mismatch.")
-    if len(selected_pois) < MIN_ROUTE_POIS or len(selected_pois) > MAX_ROUTE_POIS:
+    if (not allow_short_route and len(selected_pois) < MIN_ROUTE_POIS) or len(selected_pois) > MAX_ROUTE_POIS:
         raise RoutePlannerError(f"route must contain {MIN_ROUTE_POIS}-{MAX_ROUTE_POIS} POIs.")
     stay_overrides = stay_overrides or {}
     before_order = [poi["id"] for poi in selected_pois]
@@ -606,6 +673,48 @@ def _coordinates_for_distance(poi: dict[str, Any]) -> tuple[float, float]:
     lng = float(location["lng"])
     lat = float(location["lat"])
     return lng, lat
+
+
+def is_food_poi(poi: dict[str, Any]) -> bool:
+    food_terms = {
+        "food",
+        "restaurant",
+        "cafe",
+        "coffee",
+        "dinner",
+        "snack",
+        "餐饮",
+        "美食",
+        "餐厅",
+        "咖啡",
+        "小吃",
+        "吃饭",
+        "用餐",
+    }
+    searchable: list[str] = []
+    for key in ("category", "type", "name", "description", "reason", "note", "address", "openHoursText"):
+        value = poi.get(key)
+        if isinstance(value, str):
+            searchable.append(value.lower())
+    for key in ("tags", "experienceTags"):
+        values = poi.get(key)
+        if isinstance(values, list):
+            searchable.extend(str(value).lower() for value in values)
+    text = " ".join(searchable)
+    return any(term in text for term in food_terms)
+
+
+def _role_for_poi(poi: dict[str, Any]) -> str:
+    poi_type = poi.get("type")
+    if poi_type == "start":
+        return "start"
+    if poi_type in {"rest", "mall"}:
+        return "buffer"
+    if poi_type == "photo":
+        return "photo"
+    if poi_type == "scenic":
+        return "scenic"
+    return str(poi_type or "buffer")
 
 
 def _build_timeline_and_transport(

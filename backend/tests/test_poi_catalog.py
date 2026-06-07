@@ -24,7 +24,7 @@ from backend.app import adjust_route, AdjustRequest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-ROUTE_DATA_KEYS = {"constraints", "places", "route", "diff", "message", "adjustmentButtons"}
+ROUTE_DATA_KEYS = {"constraints", "places", "optimizedPlaces", "route", "diff", "debug", "message", "adjustmentButtons"}
 
 
 def sample_catalog() -> list[dict]:

@@ -9,8 +9,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from backend.intent_parser import parse_intent
+from backend.llm_client import get_llm_status
 from backend.poi_catalog import load_poi_catalog_or_fallback, to_frontend_places
-from backend.route_planner import RoutePlannerError, generate_adjusted_route, generate_default_route, generate_route_for_constraints
+from backend.route_planner import (
+    RoutePlannerError,
+    generate_adjusted_route,
+    generate_default_route,
+    generate_route_excluding_categories,
+    generate_route_for_constraints,
+    is_food_poi,
+)
 
 
 TRUE_VALUES = {"1", "true", "yes", "on"}
@@ -68,6 +76,11 @@ class TextRequest(BaseModel):
     text: str = ""
     message: str = ""
     activeConstraints: dict[str, Any] | None = None
+    currentRoute: dict[str, Any] | None = None
+    currentPlaces: list[dict[str, Any]] | None = None
+    currentConstraints: dict[str, Any] | None = None
+    routeData: dict[str, Any] | None = None
+    sessionId: str | None = None
 
     def input_text(self) -> str:
         return self.text or self.message
@@ -531,6 +544,9 @@ def _constraint_chips(constraints: dict) -> list[dict[str, str]]:
         preferences.append("小吃")
     if constraints.get("preferClassicScenic") is True:
         preferences.append("经典景点")
+    if _has_excluded_food(constraints):
+        preferences = [item for item in preferences if item not in {"正餐", "小吃"}]
+        preferences.append("不安排餐饮")
     chips.append({"key": "偏好", "value": "、".join(preferences) if preferences else "少排队"})
 
     companions = constraints.get("companions", [])
@@ -548,15 +564,107 @@ def _merge_constraints(active_constraints: dict | None, constraints_patch: dict 
     for key, value in patch.items():
         if value in (None, "", []):
             continue
-        if key == "avoidTypes":
+        if key in {"avoidTypes", "excludeCategories"}:
             existing = merged.get("avoidTypes", [])
+            if key == "excludeCategories":
+                existing = merged.get("excludeCategories", [])
             if not isinstance(existing, list):
                 existing = []
             incoming = value if isinstance(value, list) else [value]
-            merged["avoidTypes"] = sorted({item for item in [*existing, *incoming] if isinstance(item, str) and item})
+            merged[key] = sorted({item for item in [*existing, *incoming] if isinstance(item, str) and item})
         else:
             merged[key] = value
+    if _has_excluded_food(merged):
+        merged["includeMeal"] = False
+        merged["mealFirst"] = False
+        merged["preferProperDinner"] = False
+        merged["preferSnack"] = False
+        avoid_types = merged.get("avoidTypes", [])
+        if not isinstance(avoid_types, list):
+            avoid_types = []
+        merged["avoidTypes"] = sorted({*avoid_types, "coffee", "dinner", "snack"})
     return merged
+
+
+def _has_excluded_food(constraints: dict | None) -> bool:
+    if not isinstance(constraints, dict):
+        return False
+    categories = constraints.get("excludeCategories", [])
+    if isinstance(categories, str):
+        categories = [categories]
+    avoid_types = constraints.get("avoidTypes", [])
+    if isinstance(avoid_types, str):
+        avoid_types = [avoid_types]
+    return "food" in categories or {"coffee", "dinner", "snack"}.issubset(set(avoid_types))
+
+
+def _request_current_route(request: TextRequest) -> dict | None:
+    if isinstance(request.currentRoute, dict):
+        return deepcopy(request.currentRoute)
+    if isinstance(request.routeData, dict) and isinstance(request.routeData.get("route"), dict):
+        return deepcopy(request.routeData["route"])
+    return None
+
+
+def _request_current_places(request: TextRequest) -> list[dict] | None:
+    if isinstance(request.currentPlaces, list):
+        return deepcopy(request.currentPlaces)
+    if isinstance(request.routeData, dict):
+        places = request.routeData.get("optimizedPlaces") or request.routeData.get("places")
+        if isinstance(places, list):
+            return deepcopy(places)
+    return None
+
+
+def _request_current_constraints(request: TextRequest) -> dict:
+    if isinstance(request.currentConstraints, dict):
+        return deepcopy(request.currentConstraints)
+    if isinstance(request.routeData, dict) and isinstance(request.routeData.get("constraints"), dict):
+        return deepcopy(request.routeData["constraints"])
+    return {}
+
+
+def _current_place_ids(current_route: dict | None, current_places: list[dict] | None) -> list[str]:
+    if isinstance(current_route, dict):
+        place_ids = current_route.get("order") or current_route.get("placeIds")
+        if isinstance(place_ids, list):
+            return [place_id for place_id in place_ids if isinstance(place_id, str)]
+    if isinstance(current_places, list):
+        return [place["id"] for place in current_places if isinstance(place, dict) and isinstance(place.get("id"), str)]
+    return []
+
+
+def _attach_chat_debug(
+    route_data: dict,
+    is_follow_up: bool,
+    intent: dict,
+    old_constraints: dict,
+    user_diff: dict,
+    merged_constraints: dict,
+    current_places: list[dict] | None,
+) -> None:
+    debug = deepcopy(route_data.get("debug") or {})
+    before_places = [
+        place.get("id")
+        for place in current_places or []
+        if isinstance(place, dict) and isinstance(place.get("id"), str)
+    ]
+    after_places = deepcopy(route_data.get("route", {}).get("placeIds", []))
+    removed_places = [place_id for place_id in before_places if place_id not in after_places]
+    debug.update(
+        {
+            "isFollowUp": is_follow_up,
+            "intent": intent.get("intent"),
+            "oldConstraints": old_constraints,
+            "userDiff": user_diff,
+            "mergedConstraints": merged_constraints,
+            "beforePlaces": before_places,
+            "removedPlaces": removed_places,
+            "afterPlaces": after_places,
+            "routeUpdated": before_places != after_places if before_places else bool(route_data.get("route", {}).get("placeIds")),
+        }
+    )
+    route_data["debug"] = debug
 
 
 def _constraints_patch_from_intent(intent: dict) -> dict:
@@ -607,9 +715,16 @@ def _constraints_patch_from_intent(intent: dict) -> dict:
     avoid = intent.get("avoid")
     if isinstance(avoid, list) and "coffee" in avoid:
         patch["avoidTypes"] = [*patch.get("avoidTypes", []), "coffee"] if isinstance(patch.get("avoidTypes"), list) else ["coffee"]
+    if isinstance(avoid, list) and any(item in avoid for item in ["food", "restaurant", "meal", "dinner"]):
+        patch["excludeCategories"] = [*patch.get("excludeCategories", []), "food"] if isinstance(patch.get("excludeCategories"), list) else ["food"]
     for key in ("mealFirst", "preferRest", "preferIndoor", "preferLessWalking", "preferProperDinner", "preferShopping", "preferSnack", "preferClassicScenic"):
         if intent.get(key) is True:
             patch[key] = True
+    if "food" in patch.get("excludeCategories", []):
+        patch["includeMeal"] = False
+        patch["mealFirst"] = False
+        patch["preferProperDinner"] = False
+        patch["preferSnack"] = False
     weather = intent.get("weather")
     if isinstance(weather, str) and weather:
         patch["weather"] = weather
@@ -853,6 +968,11 @@ def platform_health() -> dict:
     return {"status": "ok"}
 
 
+@app.get("/api/llm-status")
+def llm_status() -> dict:
+    return get_llm_status()
+
+
 @app.post("/api/parse")
 def parse_text(request: TextRequest) -> dict:
     parse_intent(request.input_text())
@@ -882,13 +1002,68 @@ def chat_route_endpoint(request: TextRequest, http_request: Request) -> dict:
 
 
 def chat_route(request: TextRequest) -> dict:
-    intent = parse_intent(request.input_text())
+    current_route = _request_current_route(request)
+    current_places = _request_current_places(request)
+    old_constraints = _request_current_constraints(request)
+    is_follow_up = bool(current_route or current_places or old_constraints or request.sessionId)
+    intent = parse_intent(request.input_text(), currentRoute=current_route)
     adjustment_type = intent.get("adjustmentType") if intent.get("intent") == "adjustRoute" else None
-    constraints = _merge_constraints(request.activeConstraints, _constraints_patch_from_intent(intent))
+    constraints = _merge_constraints(_merge_constraints(old_constraints, request.activeConstraints), _constraints_patch_from_intent(intent))
     effective_adjustment = _effective_adjustment(adjustment_type, constraints)
-    if effective_adjustment in ADJUSTMENTS:
-        return _adjust_route_response(effective_adjustment, constraints=constraints)
-    return _default_route_response(constraints=constraints)
+    if _has_excluded_food(constraints):
+        response = _exclude_food_route_response(
+            current_route=current_route,
+            current_places=current_places,
+            constraints=constraints,
+            message=request.input_text(),
+        )
+    elif effective_adjustment in ADJUSTMENTS:
+        response = _adjust_route_response(effective_adjustment, constraints=constraints)
+    else:
+        response = _default_route_response(constraints=constraints)
+
+    _attach_chat_debug(
+        response["routeData"],
+        is_follow_up=is_follow_up,
+        intent=intent,
+        old_constraints=old_constraints,
+        user_diff=_constraints_patch_from_intent(intent),
+        merged_constraints=constraints,
+        current_places=current_places,
+    )
+    return response
+
+
+def _exclude_food_route_response(
+    current_route: dict | None,
+    current_places: list[dict] | None,
+    constraints: dict | None,
+    message: str = "",
+) -> dict:
+    place_ids = _current_place_ids(current_route, current_places)
+    if POI_CATALOG_LOADED:
+        try:
+            planned = generate_route_excluding_categories(
+                POI_CATALOG,
+                place_ids,
+                constraints.get("excludeCategories", []) if isinstance(constraints, dict) else ["food"],
+                constraints=constraints,
+            )
+            return {"routeData": _catalog_route_data(planned, constraints=constraints, message=message)}
+        except (RoutePlannerError, KeyError, TypeError, ValueError):
+            pass
+
+    route = deepcopy(current_route or DEFAULT_ROUTE)
+    before_ids = route.get("placeIds", DEFAULT_ROUTE["placeIds"])
+    places = _places_for_route(route)
+    food_ids = {place["id"] for place in places if is_food_poi(place)}
+    next_ids = [place_id for place_id in before_ids if place_id not in food_ids]
+    if len(next_ids) < 2:
+        next_ids = [place_id for place_id in before_ids if place_id not in food_ids] or before_ids[:1]
+    next_route = _manual_route(route, next_ids, "已去掉餐饮点，但附近可替代点不足。")
+    route_data = _route_data(route=next_route, diff=_message_diff("已去掉餐饮点", "已删除餐饮相关目的地，但当前 mock 可替代点不足。"), constraints=constraints, message=message)
+    route_data["debug"]["removedPlaces"] = sorted(food_ids)
+    return {"routeData": route_data}
 
 
 def _adjust_route_response(adjustment_type: str, constraints: dict | None = None, message: str = "") -> dict:

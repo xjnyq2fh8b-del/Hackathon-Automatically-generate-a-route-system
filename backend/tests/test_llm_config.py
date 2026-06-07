@@ -20,6 +20,7 @@ from backend.app import (
     _allowed_origins,
     chat_route,
     generate_route,
+    llm_status,
     platform_health,
 )
 from backend.llm_client import call_llm_for_intent
@@ -27,7 +28,7 @@ from backend.intent_parser import parse_intent
 
 
 ROOT = Path(__file__).resolve().parents[2]
-ROUTE_DATA_KEYS = {"constraints", "places", "route", "diff", "message", "adjustmentButtons"}
+ROUTE_DATA_KEYS = {"constraints", "places", "optimizedPlaces", "route", "diff", "debug", "message", "adjustmentButtons"}
 
 
 class LLMConfigTest(unittest.TestCase):
@@ -339,6 +340,25 @@ class LLMConfigTest(unittest.TestCase):
 
     def test_platform_health_endpoint_payload(self) -> None:
         self.assertEqual(platform_health(), {"status": "ok"})
+
+    def test_llm_status_endpoint_does_not_leak_secret(self) -> None:
+        with patch.dict(
+            "os.environ",
+            {
+                "LLM_ENABLED": "true",
+                "LLM_API_KEY": "sk-test-should-not-leak",
+                "LLM_BASE_URL": "https://llm.example/v1",
+                "LLM_MODEL": "test-model",
+                "LLM_PROVIDER": "openai_compatible",
+            },
+            clear=True,
+        ):
+            status = llm_status()
+        serialized = json.dumps(status, ensure_ascii=False)
+        self.assertTrue(status["enabled"])
+        self.assertEqual(status["provider"], "openai_compatible")
+        self.assertNotIn("sk-test-should-not-leak", serialized)
+        self.assertNotIn("LLM_API_KEY", serialized)
 
     def test_cors_allows_local_vite_and_frontend_origin(self) -> None:
         with patch.dict("os.environ", {"FRONTEND_ORIGIN": "https://frontend.example.com"}, clear=False):
