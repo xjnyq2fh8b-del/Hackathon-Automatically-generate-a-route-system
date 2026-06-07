@@ -291,6 +291,11 @@ textarea:focus {
   background: rgba(223, 241, 234, 0.72);
 }
 
+.location-entry.distanceWarning {
+  border-color: rgba(217, 121, 54, 0.28);
+  background: rgba(255, 244, 225, 0.82);
+}
+
 .location-entry.far,
 .location-entry.failed {
   border-color: rgba(197, 73, 54, 0.26);

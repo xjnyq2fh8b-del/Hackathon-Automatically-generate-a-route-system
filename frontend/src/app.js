@@ -6,7 +6,9 @@ const AMAP_SECURITY_JS_CODE = window.ROUTE_AGENT_CONFIG?.AMAP_SECURITY_JS_CODE |
 const AMAP_SCRIPT_ID = "amap-js-api";
 const AMAP_MAP_CONTAINER_ID = "route-amap";
 const HUBIN_IN77_START = { lng: 120.163749, lat: 30.25283, name: "湖滨 in77" };
+const HUBIN_NEAR_RADIUS_KM = 3;
 const HUBIN_SERVICE_RADIUS_KM = 10;
+const VIRTUAL_ORIGIN_ID = "__current_location_origin";
 
 const adjustmentMessageByType = {
   restaurantBusy: "餐厅排队太久，帮我换一个不用等太久的餐厅",
@@ -680,9 +682,85 @@ function getPoiLngLat(place) {
   return null;
 }
 
+function shouldUseCurrentLocationOrigin() {
+  return state.startPointMode === "currentLocation" && Boolean(getPoiLngLat(state.userLocation));
+}
+
+function isDefaultStartNode(node) {
+  if (!node) return false;
+  const id = String(node.id || "");
+  return node.type === "start" || id === "in77" || id === "start_in77_hubin";
+}
+
+function getVirtualOriginNode(route) {
+  if (!shouldUseCurrentLocationOrigin()) return null;
+  const firstNode = safeArray(route?.nodes)[0] || {};
+  const location = state.userLocation || {};
+  return {
+    id: VIRTUAL_ORIGIN_ID,
+    type: "currentLocation",
+    name: "我的位置",
+    shortName: "我的位置",
+    address: "已使用你的实时定位作为出发点",
+    arrive: firstNode.arrive || "",
+    leave: firstNode.leave || "",
+    lng: location.lng,
+    lat: location.lat,
+    isVirtualOrigin: true,
+  };
+}
+
+function getDisplayRouteNodes(route) {
+  const nodes = safeArray(route?.nodes);
+  const virtualOrigin = getVirtualOriginNode(route);
+  if (!virtualOrigin) return nodes;
+  const startOffset = isDefaultStartNode(nodes[0]) ? 1 : 0;
+  return [virtualOrigin, ...nodes.slice(startOffset)];
+}
+
+function buildVirtualOriginSegment(route, toNode) {
+  const fromNode = getVirtualOriginNode(route);
+  const fromLngLat = getPoiLngLat(fromNode);
+  const toLngLat = getPoiLngLat(toNode);
+  let duration = "约--分钟";
+  if (fromLngLat && toLngLat) {
+    const distanceKm = calculateDistanceKm(
+      { lng: fromLngLat[0], lat: fromLngLat[1] },
+      { lng: toLngLat[0], lat: toLngLat[1] },
+    );
+    duration = `约${Math.max(3, Math.round(distanceKm * 14))}分钟`;
+  }
+  return {
+    fromId: VIRTUAL_ORIGIN_ID,
+    toId: toNode?.id || "",
+    from: "我的位置",
+    to: toNode?.name || "",
+    method: "步行",
+    duration,
+    arriveAt: toNode?.arrive || "",
+    isVirtualOriginSegment: true,
+  };
+}
+
+function getDisplayTransportSegments(route) {
+  const segments = safeArray(route?.transportSegments);
+  const nodes = safeArray(route?.nodes);
+  const displayNodes = getDisplayRouteNodes(route);
+  if (!shouldUseCurrentLocationOrigin()) return segments;
+  const startOffset = isDefaultStartNode(nodes[0]) ? 1 : 0;
+  const firstTarget = displayNodes[1];
+  if (!firstTarget) return [];
+  return [buildVirtualOriginSegment(route, firstTarget), ...segments.slice(startOffset)];
+}
+
 function getRouteMapNodes(route) {
-  return safeArray(route?.nodes)
-    .map((node, index) => ({ ...node, index, lngLat: getPoiLngLat(node) }))
+  return getDisplayRouteNodes(route)
+    .map((node, index) => ({
+      ...node,
+      index,
+      poiIndex: node.isVirtualOrigin ? null : index + (shouldUseCurrentLocationOrigin() ? 0 : 1),
+      lngLat: getPoiLngLat(node),
+    }))
     .filter((node) => node.lngLat);
 }
 
@@ -771,11 +849,24 @@ async function locateUser() {
       return;
     }
 
+    if (distanceKm > HUBIN_NEAR_RADIUS_KM) {
+      setStatePreservingScroll({
+        userLocation: { ...location, distanceKm },
+        startPointMode: "in77",
+        locationStatus: "distanceWarning",
+        locationMessage:
+          `你距离湖滨 in77 约 ${roundedDistance}km，距离稍远，建议使用湖滨 in77 作为出发点。`,
+        activeSegmentIndex: 0,
+      });
+      return;
+    }
+
     setStatePreservingScroll({
       userLocation: { ...location, distanceKm },
       startPointMode: "currentLocation",
       locationStatus: "ready",
       locationMessage: `已使用你当前位置作为起点，距离湖滨 in77 约 ${roundedDistance}km。`,
+      activeSegmentIndex: 0,
     });
   } catch (error) {
     console.error(error);
@@ -792,6 +883,7 @@ function useIn77StartPoint() {
     startPointMode: "in77",
     locationStatus: "fallback",
     locationMessage: "已使用湖滨 in77 作为起点，可继续生成路线。",
+    activeSegmentIndex: 0,
   });
 }
 
@@ -833,7 +925,7 @@ function navigateCurrentSegment() {
 
 function navigateToPlace(placeId) {
   if (!state.route) return;
-  const nodes = safeArray(state.route.nodes);
+  const nodes = getDisplayRouteNodes(state.route);
   const targetIndex = nodes.findIndex((node) => node.id === placeId);
   const target = nodes[targetIndex];
   const previous = targetIndex > 0 ? nodes[targetIndex - 1] : null;
@@ -842,7 +934,7 @@ function navigateToPlace(placeId) {
 }
 
 function advanceSegment() {
-  const nodes = safeArray(state.route?.nodes);
+  const nodes = getDisplayRouteNodes(state.route);
   if (nodes.length < 2) return;
   const nextIndex = Math.min(state.activeSegmentIndex + 1, nodes.length - 2);
   if (nextIndex === state.activeSegmentIndex) {
@@ -856,7 +948,7 @@ function advanceSegment() {
 }
 
 function previousSegment() {
-  const nodes = safeArray(state.route?.nodes);
+  const nodes = getDisplayRouteNodes(state.route);
   if (nodes.length < 2) return;
   const previousIndex = Math.max(state.activeSegmentIndex - 1, 0);
   if (previousIndex === state.activeSegmentIndex) {
@@ -921,7 +1013,7 @@ function drawAmapRoute(AMap, route, container) {
       position: node.lngLat,
       title: node.name || "",
       label: {
-        content: String(node.index + 1),
+        content: node.isVirtualOrigin ? "起" : String(node.poiIndex || node.index + 1),
         direction: "top",
       },
     });
@@ -1035,8 +1127,8 @@ function recalculateAfterManualChange(route, explanation) {
 }
 
 function getNextAction(route) {
-  const nodes = safeArray(route.nodes);
-  const segments = safeArray(route.transportSegments);
+  const nodes = getDisplayRouteNodes(route);
+  const segments = getDisplayTransportSegments(route);
   const safeIndex = Math.min(Math.max(0, state.activeSegmentIndex || 0), Math.max(0, nodes.length - 2));
   const current = nodes[safeIndex] || {};
   const next = nodes[safeIndex + 1] || nodes[1] || nodes[0] || {};
@@ -1465,6 +1557,7 @@ function renderLocationEntry() {
     ready: { text: "📍 已使用当前位置", action: "重新定位", actionType: "useCurrentLocation" },
     loading: { text: "📍 正在获取当前位置", action: "定位中", actionType: "useCurrentLocation" },
     failed: { text: "📍 定位失败，已推荐湖滨 in77", action: "使用当前位置", actionType: "useCurrentLocation" },
+    distanceWarning: { text: "📍 距离稍远，建议使用湖滨 in77", action: "使用湖滨 in77", actionType: "useIn77Start" },
     far: { text: "📍 距离较远，建议使用湖滨 in77", action: "使用湖滨 in77", actionType: "useIn77Start" },
     fallback: { text: "📍 出发点：湖滨 in77", action: "使用当前位置", actionType: "useCurrentLocation" },
   };
@@ -1658,7 +1751,7 @@ function renderNextAction(route) {
 }
 
 function renderNextAction(route) {
-  const nodes = safeArray(route.nodes);
+  const nodes = getDisplayRouteNodes(route);
   const totalSegments = Math.max(0, nodes.length - 1);
   const currentSegment = totalSegments ? Math.min(state.activeSegmentIndex || 0, totalSegments - 1) + 1 : 0;
   const { current, next, segment } = getNextAction(route);
@@ -1725,17 +1818,19 @@ function renderTransportList(route) {
 }
 
 function renderMap(route, mode) {
-  const nodes = safeArray(route.nodes);
+  const nodes = getDisplayRouteNodes(route);
   const mapNodes = getRouteMapNodes(route);
   const activeNode = nodes.find((node) => node.id === state.selectedNodeId) || nodes[0] || {};
+  const poiCount = nodes.filter((node) => !node.isVirtualOrigin).length;
+  const mapSummary = shouldUseCurrentLocationOrigin() ? `当前位置 + ${poiCount}站` : `${poiCount}站`;
   const showMapState = state.mapStatus === "loading" || state.mapStatus === "error";
   return `
     <section class="card map-card ${mode === "preview" ? "map-preview-card" : "map-large-card"}">
-      ${mode === "large" ? `<div class="section-head"><h3>路线地图</h3><span class="summary-label">${mapNodes.length}/${nodes.length} 站</span></div>` : ""}
+      ${mode === "large" ? `<div class="section-head"><h3>路线地图</h3><span class="summary-label">${mapSummary}</span></div>` : ""}
       <div class="map amap-shell ${mode === "preview" ? "map-preview" : "map-large"}">
         <div id="${AMAP_MAP_CONTAINER_ID}" class="amap-container" aria-label="高德路线地图"></div>
         ${showMapState ? `<div class="map-state ${state.mapStatus === "error" ? "error" : ""}">${displayText(state.mapMessage, state.mapStatus === "error" ? "地图加载失败，路线文字仍可查看" : "地图加载中...")}</div>` : ""}
-        ${mode === "large" ? `<div class="map-active-place"><strong>${displayText(activeNode.name, "地点待确认")}</strong><span>${displayText(typeText[activeNode.type], "类型待确认")} | ${displayText(activeNode.arrive, "到达时间待确认")} 到达</span></div>` : ""}
+        ${mode === "large" ? `<div class="map-active-place"><strong>${displayText(activeNode.name, "地点待确认")}</strong><span>${activeNode.isVirtualOrigin ? "实时定位起点" : `${displayText(typeText[activeNode.type], "类型待确认")} | ${displayText(activeNode.arrive, "到达时间待确认")} 到达`}</span></div>` : ""}
       </div>
       ${mode === "large" ? `<div class="map-caption"><span>按当前路线顺序展示 POI Marker 和路线连线</span><span>${displayText(nodes.find((node) => node.id === state.selectedNodeId)?.name, "")}</span></div>` : ""}
     </section>
