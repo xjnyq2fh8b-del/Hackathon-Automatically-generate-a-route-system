@@ -65,12 +65,38 @@ adjustRoute 输出格式：
   }
 }
 
-支持的 adjustmentType 只有：restaurantBusy、budget100、noCoffee、twoHours、photo。
+支持的 adjustmentType 只有：restaurantBusy、budget100、noCoffee、twoHours、photo、null。
 餐厅排队太久或换一家餐厅对应 restaurantBusy。
 预算降到100以内对应 budget100。
 不想喝咖啡对应 noCoffee。
 只剩2小时对应 twoHours。
 想更适合拍照对应 photo。
+用户表达“不要/不想/去掉/删除”时，否定词优先于关键词。
+不想吃饭、不吃饭、不要餐饮、去掉餐厅、删除餐厅：
+{
+  "intent": "adjustRoute",
+  "adjustmentType": null,
+  "targetNodeType": "food",
+  "constraintsPatch": {
+    "excludeCategories": ["food"],
+    "avoidTypes": ["coffee", "dinner", "snack"],
+    "includeMeal": false,
+    "mealFirst": false,
+    "preferProperDinner": false,
+    "preferSnack": false
+  }
+}
+不想拍照、不去拍照点、去掉拍照：
+{
+  "intent": "adjustRoute",
+  "adjustmentType": null,
+  "targetNodeType": "photo",
+  "constraintsPatch": {
+    "excludeCategories": ["photo"],
+    "avoidTypes": ["photo"],
+    "preferPhoto": false
+  }
+}
 
 如果用户是第一次描述出行需求，优先输出 createRoute，并把自然语言转成偏好字段：
 饿了、先吃饭、饭点、先找吃的 -> mealFirst true。

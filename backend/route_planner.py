@@ -358,7 +358,8 @@ def generate_route_excluding_categories(
     exclude_categories: list[str],
     constraints: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    if "food" not in set(exclude_categories):
+    excluded = {category for category in exclude_categories if isinstance(category, str)}
+    if not excluded:
         return generate_route_for_constraints(poi_catalog, constraints or {})
 
     by_id = {poi.get("id"): poi for poi in poi_catalog}
@@ -366,8 +367,8 @@ def generate_route_excluding_categories(
     if not current_pois:
         current_pois = generate_default_route(poi_catalog, constraints or {})["selectedPois"]
 
-    kept = [poi for poi in current_pois if not is_food_poi(poi)]
-    removed = [poi for poi in current_pois if is_food_poi(poi)]
+    kept = [poi for poi in current_pois if not is_excluded_poi(poi, excluded)]
+    removed = [poi for poi in current_pois if is_excluded_poi(poi, excluded)]
     if not kept:
         kept = [_choose_start(poi_catalog)]
 
@@ -376,7 +377,7 @@ def generate_route_excluding_categories(
     non_food_candidates = [
         poi
         for poi in poi_catalog
-        if poi.get("id") not in excluded_ids and not is_food_poi(poi) and poi.get("type") != "start"
+        if poi.get("id") not in excluded_ids and not is_excluded_poi(poi, excluded) and poi.get("type") != "start"
     ]
     while len(selected) < MIN_ROUTE_POIS and non_food_candidates:
         anchor = selected[-1]
@@ -389,8 +390,8 @@ def generate_route_excluding_categories(
         result = _build_result(
             selected,
             roles=[_role_for_poi(poi) for poi in selected],
-            route_name="已去掉餐饮点",
-            explanation="已去掉餐饮点，但附近可替代点不足，当前只能保留较短路线。",
+            route_name=_exclude_route_name(excluded, short=True),
+            explanation=f"已去掉{_exclude_label(excluded)}，但附近可替代点不足，当前只能保留较短路线。",
             diff=None,
             start_time=_start_time_from_constraints(constraints),
             allow_short_route=True,
@@ -399,17 +400,17 @@ def generate_route_excluding_categories(
         result = _build_result(
             selected[:MAX_ROUTE_POIS],
             roles=[_role_for_poi(poi) for poi in selected[:MAX_ROUTE_POIS]],
-            route_name="无餐饮顺路路线",
-            explanation="已删除吃饭、餐厅、咖啡和小吃相关点位，并用非餐饮节点补足路线。",
+            route_name=_exclude_route_name(excluded),
+            explanation=f"已删除{_exclude_label(excluded)}相关点位，并用可替代节点补足路线。",
             diff=None,
             start_time=_start_time_from_constraints(constraints),
         )
 
     result["diff"] = _diff(
-        "已去掉餐饮点",
-        "基于当前路线删除餐饮相关目的地，并重新补足和排序。",
+        f"已去掉{_exclude_label(excluded)}",
+        "基于当前路线删除相关目的地，并重新补足和排序。",
         [
-            ("删除节点", "、".join(poi["name"] for poi in removed) if removed else "当前路线没有餐饮节点"),
+            ("删除节点", "、".join(poi["name"] for poi in removed) if removed else f"当前路线没有{_exclude_label(excluded)}"),
             ("保留/补足节点", "、".join(poi["name"] for poi in result["selectedPois"])),
             ("说明", "附近可替代点不足，已保留较短路线。" if len(result["selectedPois"]) < MIN_ROUTE_POIS else "已使用非餐饮节点补足路线。"),
         ],
@@ -676,20 +677,38 @@ def _coordinates_for_distance(poi: dict[str, Any]) -> tuple[float, float]:
 
 
 def is_food_poi(poi: dict[str, Any]) -> bool:
+    return is_excluded_poi(poi, {"food"})
+
+
+def is_excluded_poi(poi: dict[str, Any], excluded_categories: set[str]) -> bool:
+    if "food" in excluded_categories and _poi_matches_terms(
+        poi,
+        {
+            "food",
+            "restaurant",
+            "cafe",
+            "coffee",
+            "dinner",
+            "snack",
+            "餐饮",
+            "美食",
+            "餐厅",
+            "咖啡",
+            "小吃",
+            "吃饭",
+            "用餐",
+        },
+    ):
+        return True
+    if "photo" in excluded_categories and _poi_matches_terms(poi, {"photo", "拍照", "出片", "打卡"}):
+        return True
+    return False
+
+
+def _poi_matches_terms(poi: dict[str, Any], terms: set[str]) -> bool:
     food_terms = {
-        "food",
-        "restaurant",
-        "cafe",
-        "coffee",
-        "dinner",
-        "snack",
-        "餐饮",
-        "美食",
-        "餐厅",
-        "咖啡",
-        "小吃",
-        "吃饭",
-        "用餐",
+        term.lower()
+        for term in terms
     }
     searchable: list[str] = []
     for key in ("category", "type", "name", "description", "reason", "note", "address", "openHoursText"):
@@ -702,6 +721,23 @@ def is_food_poi(poi: dict[str, Any]) -> bool:
             searchable.extend(str(value).lower() for value in values)
     text = " ".join(searchable)
     return any(term in text for term in food_terms)
+
+
+def _exclude_label(excluded_categories: set[str]) -> str:
+    labels = []
+    if "food" in excluded_categories:
+        labels.append("餐饮点")
+    if "photo" in excluded_categories:
+        labels.append("拍照点")
+    return "、".join(labels) if labels else "指定点位"
+
+
+def _exclude_route_name(excluded_categories: set[str], short: bool = False) -> str:
+    if "food" in excluded_categories:
+        return "已去掉餐饮点" if short else "无餐饮顺路路线"
+    if "photo" in excluded_categories:
+        return "已去掉拍照点" if short else "无拍照点顺路路线"
+    return "已调整路线" if short else "调整后顺路路线"
 
 
 def _role_for_poi(poi: dict[str, Any]) -> str:

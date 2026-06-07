@@ -10,6 +10,7 @@ from backend import llm_client
 SUPPORTED_ADJUSTMENTS = {"restaurantBusy", "budget100", "noCoffee", "twoHours", "photo"}
 SUPPORTED_INTENTS = {"createRoute", "adjustRoute"}
 FOOD_EXCLUDE_CATEGORY = "food"
+PHOTO_EXCLUDE_CATEGORY = "photo"
 
 
 def parse_intent(message: str, currentRoute: dict | None = None) -> dict[str, Any]:
@@ -40,6 +41,20 @@ def parse_intent_with_rules(message: str) -> dict[str, Any]:
             "no restaurant",
         ],
     )
+    wants_no_photo = _contains_any(
+        text,
+        [
+            "不想拍照",
+            "不拍照",
+            "不要拍照",
+            "不去拍照",
+            "不去拍照点",
+            "去掉拍照",
+            "删除拍照",
+            "不要拍照点",
+            "no photo",
+        ],
+    )
     wants_no_coffee = _contains_any(text, ["不想喝咖啡", "不要咖啡", "不喝咖啡", "不想咖啡", "换个休息点", "换一个休息点", "no coffee"])
     wants_budget100 = _contains_any(text, ["预算100", "100以内", "100内", "降到100", "便宜点", "省钱一点", "省钱", "太贵了", "预算", "budget"])
     wants_low_wait = _contains_any(text, ["排队太久", "少排队", "人少点", "换一家餐厅", "餐厅太挤", "餐厅排队", "等位", "queue", "busy"])
@@ -66,13 +81,17 @@ def parse_intent_with_rules(message: str) -> dict[str, Any]:
         constraints_patch["mealFirst"] = False
         constraints_patch["preferProperDinner"] = False
         constraints_patch["preferSnack"] = False
+    if wants_no_photo:
+        constraints_patch["excludeCategories"] = [PHOTO_EXCLUDE_CATEGORY]
+        constraints_patch["avoidTypes"] = ["photo"]
+        constraints_patch["preferPhoto"] = False
     if wants_no_coffee:
         constraints_patch["avoidTypes"] = ["coffee"]
     if wants_low_wait:
         constraints_patch["preferLowWait"] = True
     if wants_two_hours:
         constraints_patch["durationMinutes"] = 120
-    if wants_photo:
+    if wants_photo and not wants_no_photo:
         constraints_patch["preferPhoto"] = True
     if wants_meal_first and not wants_no_food:
         constraints_patch["mealFirst"] = True
@@ -105,7 +124,7 @@ def parse_intent_with_rules(message: str) -> dict[str, Any]:
 
     adjustment_type = None
 
-    if wants_no_food:
+    if wants_no_food or wants_no_photo:
         adjustment_type = None
     elif wants_two_hours:
         adjustment_type = "twoHours"
@@ -120,7 +139,7 @@ def parse_intent_with_rules(message: str) -> dict[str, Any]:
 
     return {
         "source": "rules",
-        "intent": "adjustRoute" if adjustment_type or wants_no_food else "createRoute",
+        "intent": "adjustRoute" if adjustment_type or wants_no_food or wants_no_photo else "createRoute",
         "adjustmentType": adjustment_type,
         "constraintsPatch": constraints_patch,
         "rawText": message or "",

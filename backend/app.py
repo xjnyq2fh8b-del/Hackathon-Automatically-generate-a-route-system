@@ -17,7 +17,7 @@ from backend.route_planner import (
     generate_default_route,
     generate_route_excluding_categories,
     generate_route_for_constraints,
-    is_food_poi,
+    is_excluded_poi,
 )
 
 
@@ -544,9 +544,13 @@ def _constraint_chips(constraints: dict) -> list[dict[str, str]]:
         preferences.append("小吃")
     if constraints.get("preferClassicScenic") is True:
         preferences.append("经典景点")
-    if _has_excluded_food(constraints):
+    excluded_categories = _excluded_categories(constraints)
+    if "food" in excluded_categories:
         preferences = [item for item in preferences if item not in {"正餐", "小吃"}]
         preferences.append("不安排餐饮")
+    if "photo" in excluded_categories:
+        preferences = [item for item in preferences if item != "适合拍照"]
+        preferences.append("不安排拍照点")
     chips.append({"key": "偏好", "value": "、".join(preferences) if preferences else "少排队"})
 
     companions = constraints.get("companions", [])
@@ -574,7 +578,8 @@ def _merge_constraints(active_constraints: dict | None, constraints_patch: dict 
             merged[key] = sorted({item for item in [*existing, *incoming] if isinstance(item, str) and item})
         else:
             merged[key] = value
-    if _has_excluded_food(merged):
+    excluded_categories = _excluded_categories(merged)
+    if "food" in excluded_categories:
         merged["includeMeal"] = False
         merged["mealFirst"] = False
         merged["preferProperDinner"] = False
@@ -583,19 +588,39 @@ def _merge_constraints(active_constraints: dict | None, constraints_patch: dict 
         if not isinstance(avoid_types, list):
             avoid_types = []
         merged["avoidTypes"] = sorted({*avoid_types, "coffee", "dinner", "snack"})
+    if "photo" in excluded_categories:
+        merged["preferPhoto"] = False
+        avoid_types = merged.get("avoidTypes", [])
+        if not isinstance(avoid_types, list):
+            avoid_types = []
+        merged["avoidTypes"] = sorted({*avoid_types, "photo"})
     return merged
 
 
 def _has_excluded_food(constraints: dict | None) -> bool:
+    return "food" in _excluded_categories(constraints)
+
+
+def _has_excluded_categories(constraints: dict | None) -> bool:
+    return bool(_excluded_categories(constraints))
+
+
+def _excluded_categories(constraints: dict | None) -> set[str]:
     if not isinstance(constraints, dict):
-        return False
+        return set()
     categories = constraints.get("excludeCategories", [])
     if isinstance(categories, str):
         categories = [categories]
     avoid_types = constraints.get("avoidTypes", [])
     if isinstance(avoid_types, str):
         avoid_types = [avoid_types]
-    return "food" in categories or {"coffee", "dinner", "snack"}.issubset(set(avoid_types))
+    result = {category for category in categories if isinstance(category, str)}
+    avoid_set = {item for item in avoid_types if isinstance(item, str)}
+    if {"coffee", "dinner", "snack"}.issubset(avoid_set):
+        result.add("food")
+    if "photo" in avoid_set:
+        result.add("photo")
+    return result
 
 
 def _request_current_route(request: TextRequest) -> dict | None:
@@ -717,6 +742,8 @@ def _constraints_patch_from_intent(intent: dict) -> dict:
         patch["avoidTypes"] = [*patch.get("avoidTypes", []), "coffee"] if isinstance(patch.get("avoidTypes"), list) else ["coffee"]
     if isinstance(avoid, list) and any(item in avoid for item in ["food", "restaurant", "meal", "dinner"]):
         patch["excludeCategories"] = [*patch.get("excludeCategories", []), "food"] if isinstance(patch.get("excludeCategories"), list) else ["food"]
+    if isinstance(avoid, list) and "photo" in avoid:
+        patch["excludeCategories"] = [*patch.get("excludeCategories", []), "photo"] if isinstance(patch.get("excludeCategories"), list) else ["photo"]
     for key in ("mealFirst", "preferRest", "preferIndoor", "preferLessWalking", "preferProperDinner", "preferShopping", "preferSnack", "preferClassicScenic"):
         if intent.get(key) is True:
             patch[key] = True
@@ -725,6 +752,8 @@ def _constraints_patch_from_intent(intent: dict) -> dict:
         patch["mealFirst"] = False
         patch["preferProperDinner"] = False
         patch["preferSnack"] = False
+    if "photo" in patch.get("excludeCategories", []):
+        patch["preferPhoto"] = False
     weather = intent.get("weather")
     if isinstance(weather, str) and weather:
         patch["weather"] = weather
@@ -1010,8 +1039,8 @@ def chat_route(request: TextRequest) -> dict:
     adjustment_type = intent.get("adjustmentType") if intent.get("intent") == "adjustRoute" else None
     constraints = _merge_constraints(_merge_constraints(old_constraints, request.activeConstraints), _constraints_patch_from_intent(intent))
     effective_adjustment = _effective_adjustment(adjustment_type, constraints)
-    if _has_excluded_food(constraints):
-        response = _exclude_food_route_response(
+    if _has_excluded_categories(constraints):
+        response = _exclude_categories_route_response(
             current_route=current_route,
             current_places=current_places,
             constraints=constraints,
@@ -1034,19 +1063,20 @@ def chat_route(request: TextRequest) -> dict:
     return response
 
 
-def _exclude_food_route_response(
+def _exclude_categories_route_response(
     current_route: dict | None,
     current_places: list[dict] | None,
     constraints: dict | None,
     message: str = "",
 ) -> dict:
     place_ids = _current_place_ids(current_route, current_places)
+    excluded_categories = _excluded_categories(constraints)
     if POI_CATALOG_LOADED:
         try:
             planned = generate_route_excluding_categories(
                 POI_CATALOG,
                 place_ids,
-                constraints.get("excludeCategories", []) if isinstance(constraints, dict) else ["food"],
+                sorted(excluded_categories),
                 constraints=constraints,
             )
             return {"routeData": _catalog_route_data(planned, constraints=constraints, message=message)}
@@ -1056,13 +1086,13 @@ def _exclude_food_route_response(
     route = deepcopy(current_route or DEFAULT_ROUTE)
     before_ids = route.get("placeIds", DEFAULT_ROUTE["placeIds"])
     places = _places_for_route(route)
-    food_ids = {place["id"] for place in places if is_food_poi(place)}
-    next_ids = [place_id for place_id in before_ids if place_id not in food_ids]
+    removed_ids = {place["id"] for place in places if is_excluded_poi(place, excluded_categories)}
+    next_ids = [place_id for place_id in before_ids if place_id not in removed_ids]
     if len(next_ids) < 2:
-        next_ids = [place_id for place_id in before_ids if place_id not in food_ids] or before_ids[:1]
-    next_route = _manual_route(route, next_ids, "已去掉餐饮点，但附近可替代点不足。")
-    route_data = _route_data(route=next_route, diff=_message_diff("已去掉餐饮点", "已删除餐饮相关目的地，但当前 mock 可替代点不足。"), constraints=constraints, message=message)
-    route_data["debug"]["removedPlaces"] = sorted(food_ids)
+        next_ids = [place_id for place_id in before_ids if place_id not in removed_ids] or before_ids[:1]
+    next_route = _manual_route(route, next_ids, "已去掉相关点位，但附近可替代点不足。")
+    route_data = _route_data(route=next_route, diff=_message_diff("已去掉相关点位", "已删除相关目的地，但当前 mock 可替代点不足。"), constraints=constraints, message=message)
+    route_data["debug"]["removedPlaces"] = sorted(removed_ids)
     return {"routeData": route_data}
 
 

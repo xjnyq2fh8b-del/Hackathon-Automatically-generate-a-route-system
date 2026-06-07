@@ -154,6 +154,44 @@ class LLMConfigTest(unittest.TestCase):
                 with self.subTest(text=text):
                     self.assertEqual(parse_intent(text)["adjustmentType"], expected)
 
+    def test_negative_food_and_photo_phrases_parse_to_exclusions(self) -> None:
+        cases = {
+            "我不想吃饭": "food",
+            "不吃饭了，去掉餐厅": "food",
+            "我不想拍照": "photo",
+            "不去拍照点": "photo",
+        }
+        with patch("backend.llm_client.call_llm_for_intent", return_value=None):
+            for text, expected_category in cases.items():
+                with self.subTest(text=text):
+                    intent = parse_intent(text)
+                    self.assertEqual(intent["intent"], "adjustRoute")
+                    self.assertIsNone(intent["adjustmentType"])
+                    self.assertIn(expected_category, intent["constraintsPatch"]["excludeCategories"])
+                    if expected_category == "photo":
+                        self.assertFalse(intent["constraintsPatch"]["preferPhoto"])
+
+    def test_llm_adjust_route_can_exclude_categories_without_adjustment_type(self) -> None:
+        llm_json = json.dumps(
+            {
+                "intent": "adjustRoute",
+                "adjustmentType": None,
+                "targetNodeType": "food",
+                "constraintsPatch": {
+                    "excludeCategories": ["food"],
+                    "avoidTypes": ["coffee", "dinner", "snack"],
+                    "includeMeal": False,
+                },
+            },
+            ensure_ascii=False,
+        )
+        with patch("backend.llm_client.call_llm_for_intent", return_value=llm_json):
+            intent = parse_intent("我不想吃饭")
+        self.assertEqual(intent["source"], "llm")
+        self.assertEqual(intent["intent"], "adjustRoute")
+        self.assertIsNone(intent["adjustmentType"])
+        self.assertIn("food", intent["constraintsPatch"]["excludeCategories"])
+
     def test_extended_adjustment_phrases_parse_to_supported_types(self) -> None:
         cases = {
             "换个休息点": "noCoffee",
@@ -223,6 +261,42 @@ class LLMConfigTest(unittest.TestCase):
         self.assertIn("coffee", route_data["constraints"]["avoidTypes"])
         place_types = [place["type"] for place in route_data["places"]]
         self.assertNotIn("coffee", place_types)
+
+    def test_follow_up_no_food_removes_food_places_from_current_route(self) -> None:
+        with patch("backend.llm_client.call_llm_for_intent", return_value=None):
+            current = chat_route(TextRequest(message="我想现在出发逛西湖"))["routeData"]
+            route_data = chat_route(
+                TextRequest(
+                    message="我不想吃饭",
+                    currentRoute=current["route"],
+                    currentPlaces=current["optimizedPlaces"],
+                    currentConstraints=current["constraints"],
+                )
+            )["routeData"]
+        self.assertIn("food", route_data["constraints"]["excludeCategories"])
+        self.assertTrue(route_data["debug"]["isFollowUp"])
+        self.assertTrue(route_data["debug"]["routeUpdated"])
+        self.assertTrue(route_data["debug"]["removedPlaces"])
+        self.assertNotIn("dinner", [place["type"] for place in route_data["places"]])
+        self.assertNotIn("coffee", [place["type"] for place in route_data["places"]])
+
+    def test_follow_up_no_photo_removes_photo_place_from_current_route(self) -> None:
+        with patch("backend.llm_client.call_llm_for_intent", return_value=None):
+            current = chat_route(TextRequest(message="想更适合拍照"))["routeData"]
+            self.assertIn("photo", [place["type"] for place in current["places"]])
+            route_data = chat_route(
+                TextRequest(
+                    message="我不想拍照",
+                    currentRoute=current["route"],
+                    currentPlaces=current["optimizedPlaces"],
+                    currentConstraints=current["constraints"],
+                )
+            )["routeData"]
+        self.assertIn("photo", route_data["constraints"]["excludeCategories"])
+        self.assertFalse(route_data["constraints"]["preferPhoto"])
+        self.assertTrue(route_data["debug"]["isFollowUp"])
+        self.assertTrue(route_data["debug"]["routeUpdated"])
+        self.assertNotIn("photo", [place["type"] for place in route_data["places"]])
 
     def test_chat_route_merges_active_constraints(self) -> None:
         with patch("backend.llm_client.call_llm_for_intent", return_value=None):
