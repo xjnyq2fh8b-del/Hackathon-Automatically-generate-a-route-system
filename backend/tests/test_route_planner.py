@@ -115,6 +115,10 @@ class RoutePlannerApiTest(unittest.TestCase):
         dinner = next(poi for poi in planned["selectedPois"] if poi["type"] == "dinner")
         self.assertNotEqual(dinner["id"], "dinner_xinbailu_hubin88")
         self.assertEqual(planned["route"]["timeline"][0]["arrive"], "15:00")
+        self.assertEqual(planned["selectedPois"][1]["type"], "dinner")
+        self.assertEqual(planned["route"]["placeIds"][1], dinner["id"])
+        self.assertFalse(planned["debug"]["routeOptimized"])
+        self.assertEqual(planned["debug"]["optimizeMethod"], "semantic_order_preserved")
 
     def test_closed_status_uses_open_hours_text_when_structured_hours_missing(self) -> None:
         data = catalog()

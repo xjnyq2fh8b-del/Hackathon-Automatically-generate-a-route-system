@@ -145,6 +145,7 @@ def generate_route_for_constraints(poi_catalog: list[dict[str, Any]], constraint
                 explanation="已把餐饮提前，适合当前更想先补充体力再游览的场景。",
                 diff=None,
                 start_time=start_time,
+                optimize_order=False,
             ),
             constraints,
         )
@@ -530,6 +531,7 @@ def _build_result(
     stay_overrides: dict[str, int] | None = None,
     start_time: str = DEFAULT_START_TIME,
     allow_short_route: bool = False,
+    optimize_order: bool = True,
 ) -> dict[str, Any]:
     if len(selected_pois) != len(roles):
         raise RoutePlannerError("selected_pois and roles length mismatch.")
@@ -537,7 +539,19 @@ def _build_result(
         raise RoutePlannerError(f"route must contain {MIN_ROUTE_POIS}-{MAX_ROUTE_POIS} POIs.")
     stay_overrides = stay_overrides or {}
     before_order = [poi["id"] for poi in selected_pois]
-    optimized_pois, optimize_debug = optimize_route_order(selected_pois)
+    if optimize_order:
+        optimized_pois, optimize_debug = optimize_route_order(selected_pois)
+    else:
+        optimized_pois = selected_pois
+        optimize_debug = {
+            "beforeOrder": before_order,
+            "afterOrder": before_order,
+            "routeOptimized": False,
+            "fallbackUsed": False,
+            "optimizeMethod": "semantic_order_preserved",
+            "routeTotalDistance": 0,
+            "routeTotalDuration": 0,
+        }
     role_by_id = {poi["id"]: role for poi, role in zip(selected_pois, roles)}
     selected_pois = optimized_pois
     roles = [role_by_id[poi["id"]] for poi in selected_pois]
